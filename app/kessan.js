@@ -217,11 +217,12 @@
         if (/Guarantee|保証金|差入/.test(n + lb)) return 1;
         return 0;
       };
-      var cands = leaves.filter(function (x) { return x !== l && x.p === l.p && x.val > 0 && rank(x) >= 0; })
+      // 相手は債権のたぐいだけ。見つからなければ差し引かず「その他」に含める
+      var cands = leaves.filter(function (x) { return x !== l && x.p === l.p && x.val > 0 && rank(x) >= 1; })
         .sort(function (a, b) { return rank(b) - rank(a) || b.val - a.val; });
       var rest = -l.val, restP = l.pv !== undefined ? -l.pv : 0;
       cands.forEach(function (x) {
-        if (rest <= 0 || (rank(x) === 0 && cands.some(function (y) { return rank(y) > 0 && y.val > 0; }))) return;
+        if (rest <= 0) return;
         var take = Math.min(rest, x.val); x.val -= take; rest -= take; x.netted = true;
         if (x.pv !== undefined && restP > 0) { var tp = Math.min(restP, x.pv); x.pv -= tp; restP -= tp; }
       });

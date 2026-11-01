@@ -161,7 +161,7 @@
     ch.innerHTML = out.svg; ch.setAttribute('aria-label', name + '：' + co.name);
     ch.addEventListener('click', function () { ch.classList.toggle('zoom'); });
     f.querySelector('.name').textContent = name;
-    f.querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { exportFig(id, b.dataset.act); }); });
+    f.querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { exportFig(id, b.dataset.act, b); }); });
     return f;
   }
   // ファイル名：銘柄コード＋決算期（例：7551FY2027.3Q2_PL.png）
@@ -199,30 +199,46 @@
   }
 
   /* ---------- 画像にする ---------- */
+  // 図を画像にする。端末によって大きな画像が作れないときは、小さくして作り直す
   function toPng(f) {
-    return new Promise(function (res, rej) {
-      var img = new Image();
-      img.onload = function () {
-        var c = document.createElement('canvas'), k = 2;
-        c.width = f.w * k; c.height = f.h * k;
-        var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
-        res(c.toDataURL('image/png').split(',')[1]);
-      };
-      img.onerror = function () { rej(new Error('画像にできませんでした')); };
-      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(f.svg);
-    });
+    function attempt(k) {
+      return new Promise(function (res, rej) {
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var c = document.createElement('canvas');
+            c.width = Math.round(f.w * k); c.height = Math.round(f.h * k);
+            var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+            var url = c.toDataURL('image/png');
+            if (!url || url.length < 200) throw new Error('empty');
+            res(url.split(',')[1]);
+          } catch (e) { rej(e); }
+        };
+        img.onerror = function () { rej(new Error('図を読み込めませんでした')); };
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(f.svg);
+      });
+    }
+    return attempt(2).catch(function () { return attempt(1.4); }).catch(function () { return attempt(1); })
+      .catch(function () { throw new Error('この端末では画像を作れませんでした'); });
   }
-  function exportFig(id, act) {
+  // 結果は押したボタンのすぐ下に出す（画面の上の方だと見えないため）
+  function toast(msg, err) {
+    var t = $('toast'); t.textContent = msg; t.classList.toggle('err', !!err); t.hidden = false;
+    clearTimeout(toast.tm); toast.tm = setTimeout(function () { t.hidden = true; }, 5000);
+  }
+  function exportFig(id, act, btn) {
     var f = figs[id]; if (!f) return;
+    if (btn) { btn.disabled = true; setTimeout(function () { btn.disabled = false; }, 1500); }
+    toast(act === 'share' ? '画像を作っています…' : '保存しています…');
     toPng(f).then(function (b64) {
       if (window.AndroidBridge) {
-        if (act === 'share') window.AndroidBridge.shareImage(b64, f.file);
-        else status(window.AndroidBridge.saveImage(b64, f.file));
+        var r = act === 'share' ? window.AndroidBridge.shareImage(b64, f.file) : window.AndroidBridge.saveImage(b64, f.file);
+        if (r) toast(r, /できません/.test(r)); else document.getElementById('toast').hidden = true;
         return;
       }
-      var a = document.createElement('a'); a.href = 'data:image/png;base64,' + b64; a.download = f.file; a.click();
-      status('画像を保存しました（' + f.file + '）');
-    }).catch(function (e) { status(e.message, true); });
+      var a = document.createElement('a'); a.href = 'data:image/png;base64,' + b64; a.download = f.file; document.body.appendChild(a); a.click(); a.remove();
+      toast('保存しました（' + f.file + '）');
+    }).catch(function (e) { toast(e.message, true); });
   }
 
   /* ---------- お気に入り ---------- */

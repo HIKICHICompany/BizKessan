@@ -100,6 +100,9 @@
   .extra section { border-top: 2px solid var(--navy); margin-top: 18px; }
   .hint { margin: 8px 2px 0; font-size: 12.5px; color: var(--faint); }
   footer a { color: var(--navy); }
+  .toast { position: fixed; left: 16px; right: 16px; bottom: max(18px, env(safe-area-inset-bottom)); z-index: 20; background: var(--ink); color: #fff; padding: 12px 16px; border-radius: 10px; font-size: 14px; line-height: 1.6; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+  .toast[hidden] { display: none; }
+  .toast.err { background: var(--red); }
   footer { margin: 30px 2px 0; font-size: 12px; color: var(--faint); line-height: 1.8; }
 </style>
 </head>
@@ -151,6 +154,7 @@
   </footer>
 </div>
 
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script src="kessan.js"></script>
 <script src="app.js"></script>
 </body>

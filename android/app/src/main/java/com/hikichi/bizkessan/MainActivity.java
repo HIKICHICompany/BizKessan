@@ -90,44 +90,80 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
+    private void toast(final String msg) {
+        runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this, msg, android.widget.Toast.LENGTH_LONG).show());
+    }
+
+    // 共有用の一時ファイル（保存に失敗したときの逃げ道にも使う）
+    private Uri tempFile(byte[] png, String name) throws Exception {
+        File dir = new File(getCacheDir(), "share");
+        dir.mkdirs();
+        File f = new File(dir, name);
+        try (FileOutputStream os = new FileOutputStream(f)) { os.write(png); }
+        return FileProvider.getUriForFile(MainActivity.this, "com.hikichi.bizkessan.files", f);
+    }
+
+    private void openShare(Uri uri, String title) {
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("image/png");
+        send.putExtra(Intent.EXTRA_STREAM, uri);
+        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        runOnUiThread(() -> startActivity(Intent.createChooser(send, title)));
+    }
+
     private class Bridge {
         @JavascriptInterface
         public String saveImage(String b64, String name) {
+            byte[] png;
             try {
-                byte[] png = Base64.decode(b64, Base64.DEFAULT);
+                png = Base64.decode(b64, Base64.DEFAULT);
+                if (png.length < 100) throw new Exception("画像が空でした");
+            } catch (Exception e) {
+                String m = "画像を作れませんでした（" + e.getMessage() + "）";
+                toast(m); return m;
+            }
+            Uri uri = null;
+            try {
                 ContentValues v = new ContentValues();
                 v.put(MediaStore.Images.Media.DISPLAY_NAME, name);
                 v.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
-                v.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/美図決算");
-                Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
-                if (uri == null) return "画像を保存できませんでした。";
+                v.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/BizKessan");
+                v.put(MediaStore.Images.Media.IS_PENDING, 1);
+                uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+                if (uri == null) throw new Exception("保存先を作れませんでした");
                 try (OutputStream os = getContentResolver().openOutputStream(uri)) {
+                    if (os == null) throw new Exception("保存先を開けませんでした");
                     os.write(png);
                 }
-                return "画像を保存しました（写真アプリの「美図決算」フォルダ：" + name + "）";
+                ContentValues done = new ContentValues();
+                done.put(MediaStore.Images.Media.IS_PENDING, 0);
+                getContentResolver().update(uri, done, null, null);
+                String m = "保存しました：写真アプリの「BizKessan」フォルダ（" + name + "）";
+                toast(m); return m;
             } catch (Exception e) {
-                return "画像を保存できませんでした。（" + e.getMessage() + "）";
+                if (uri != null) { try { getContentResolver().delete(uri, null, null); } catch (Exception ignore) { } }
+                // 端末の都合で保存できないときは、共有の画面から「ファイルに保存」などを選べるようにする
+                try {
+                    openShare(tempFile(png, name), "保存先を選ぶ");
+                    String m = "直接保存できなかったため、保存先を選ぶ画面を開きました（" + e.getMessage() + "）";
+                    toast(m); return m;
+                } catch (Exception e2) {
+                    String m = "画像を保存できませんでした（" + e.getMessage() + "）";
+                    toast(m); return m;
+                }
             }
         }
 
         @JavascriptInterface
-        public void shareImage(String b64, String name) {
+        public String shareImage(String b64, String name) {
             try {
                 byte[] png = Base64.decode(b64, Base64.DEFAULT);
-                File dir = new File(getCacheDir(), "share");
-                dir.mkdirs();
-                File f = new File(dir, name);
-                try (FileOutputStream os = new FileOutputStream(f)) {
-                    os.write(png);
-                }
-                Uri uri = FileProvider.getUriForFile(MainActivity.this, "com.hikichi.bizkessan.files", f);
-                Intent send = new Intent(Intent.ACTION_SEND);
-                send.setType("image/png");
-                send.putExtra(Intent.EXTRA_STREAM, uri);
-                send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                runOnUiThread(() -> startActivity(Intent.createChooser(send, "共有する")));
+                if (png.length < 100) throw new Exception("画像が空でした");
+                openShare(tempFile(png, name), "共有する");
+                return "";
             } catch (Exception e) {
-                // 共有できなくても画面は動かし続ける
+                String m = "共有できませんでした（" + e.getMessage() + "）";
+                toast(m); return m;
             }
         }
     }
