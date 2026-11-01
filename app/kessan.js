@@ -295,7 +295,14 @@
     var orderOf = {};
     T.att.forEach(function (f, i) { if (orderOf[f.concept] === undefined && f.ctx === cur) orderOf[f.concept] = i; });
     var labelOf = {};
-    T.att.forEach(function (f) { if (f.label && !labelOf[f.concept]) labelOf[f.concept] = f.label; });
+    // 科目名は貸借対照表のページの行の名前を優先する（キャッシュ・フロー計算書の「期首残高」などを拾わないため）
+    var cleanLab = function (l) {
+      return String(l).replace(/^\s*(?:[Ⅰ-Ⅹ]+|[IVX]+[\s．.]|[（(][0-9０-９]+[）)]|[0-9０-９]+[．.])\s*/, '').replace(/の?(期首|期末|四半期末|中間期末|中間連結会計期間末)残高.*$/, '').trim();
+    };
+    var isBS = function (f) { return /(bs|fs)\d*-/i.test(String(f.file).split('/').pop()); };
+    T.att.forEach(function (f) { if (f.label && isBS(f) && !labelOf[f.concept]) labelOf[f.concept] = cleanLab(f.label); });
+    T.att.forEach(function (f) { if (f.label && !labelOf[f.concept] && !/(cf|ss)\d*-/i.test(String(f.file).split('/').pop())) labelOf[f.concept] = cleanLab(f.label); });
+    T.att.forEach(function (f) { if (f.label && !labelOf[f.concept]) labelOf[f.concept] = cleanLab(f.label); });
 
     var leaves = [];
     function walk(c, sign, depth) {
@@ -695,7 +702,7 @@
     var W = 2000, H = 1160 + EXT, B = svgBuilder(W, H), U = cfg.unit;
     var f = function (v) { return Math.round(v / U.div).toLocaleString('ja-JP'); };
     var pct = function (v) { return '総資産の' + (v / cfg.total * 100).toFixed(1) + '%'; };
-    var NW = 54, XL = 420, XC = 780, XRt = 1328, SPAN = 546, k = SPAN / cfg.total;
+    var NW = 54, XL = 420, XRt = 1328, XC = (XL + XRt) / 2, /* 総資産の柱を真ん中に：左右の流れの横幅をそろえる */ SPAN = 546, k = SPAN / cfg.total;
     function rect(x, y, h, c) { B.add('<rect x="' + x + '" y="' + y.toFixed(1) + '" width="' + NW + '" height="' + Math.max(h, 2).toFixed(1) + '" fill="' + c + '"/>'); }
     function band(x0, a0, b0, x1, a1, b1, c) {
       var m = (x0 + x1) / 2;
@@ -757,8 +764,8 @@
       if (!spans.length) return;
       var a = spans[0], b = spans[spans.length - 1];
       var yMid = ((a[0] + b[1]) / 2 + (a[2] + b[3]) / 2) / 2;
-      B.text(1083, yMid - 4, title + ' ' + f(v), { size: 23, weight: 900, fill: color });
-      B.text(1083, yMid + 20, pct(v), { size: 16, fill: color });
+      B.text((XC + NW + XRt) / 2, yMid - 4, title + ' ' + f(v), { size: 23, weight: 900, fill: color });
+      B.text((XC + NW + XRt) / 2, yMid + 20, pct(v), { size: 16, fill: color });
     }
     midLabel(ryLiab, '負債', cfg.liab, BSC.liabText);
     midLabel(ryEq, '純資産', cfg.netAssets, BSC.eqText);
