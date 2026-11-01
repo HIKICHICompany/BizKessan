@@ -540,9 +540,9 @@
     B.text(OX + 860, OY + 76, ttl, { size: TTL_SIZE, weight: 900 });
     gy = 92;
     // 図の本体は少し小さくして、下に余白をつくる（題名と下の欄はそのままの大きさ）
-    var SC = 0.9, scX = W / 2, scY = OY + 110;
+    var SC = 0.93, scX = W / 2, scY = OY + 110;
     B.add('<g transform="translate(' + scX + ' ' + scY + ') scale(' + SC + ') translate(' + (-scX) + ' ' + (-scY) + ')">');
-    var XS = 300, XR = 615, XG = 915, XO = 1205, XF = 1490; // 横に少し広げる
+    var XS = 305, XR = 610, XG = 900, XO = 1180, XF = 1455; // 左右の余白がそろう幅
     var rT = 300, rB = rT + P.rev * k;
     // セグメント
     // 注記と出典は左下の枠（売上原価のラベルにかからない幅）に、下から積む
@@ -610,7 +610,7 @@
     if (P.op >= 0) {
       var oT = 170, oH = Hf(P.op), sH = P.sga * k, gCut = gT + P.op * k;
       // 販管費の箱は、流れが平らな線にならないよう、出どころより少し下に置く（下にはみ出さない範囲で）
-      var sT = Math.min(Math.max(440, oT + oH + 60, gCut + 90), Math.max(440, oT + oH + 60, 900 - sH - 110));
+      var sT = Math.min(Math.max(440, oT + oH + 60, gCut + 90), Math.max(440, oT + oH + 60, 850 - sH - 110)); // 下の欄にかからない高さまで
       flow(XSRC + NW, gT, gCut, XO, oT, oT + oH, PAL.gnflow); flow(XSRC + NW, gCut, gT + gH, XO, sT, sT + sH, PAL.sgaflow);
       node(XO, oT, oH, PAL.op); node(XO, sT, sH, PAL.sga);
       lines(XO + NW / 2, oT - 150, [['営業利益', 32, 900, GT], [fmt(P.op), 32, 700, GT], ['利益率 ' + rt(P.op, P.rev).toFixed(1) + '%', 19, 500, M], [has(Pp.op) ? pp(rt(P.op, P.rev), rt(Pp.op, Pp.rev)) : '', 19, 500, M]]);
@@ -735,7 +735,7 @@
     var W = 2000, H = 1160 + EXT, B = svgBuilder(W, H), U = cfg.unit;
     var f = function (v) { return Math.round(v / U.div).toLocaleString('ja-JP'); };
     var pct = function (v) { return '総資産の' + (v / cfg.total * 100).toFixed(1) + '%'; };
-    var NW = 54, XL = 1000 - 640, XRt = 1000 + 640 - NW, XC = (XL + XRt) / 2, /* 総資産の柱を真ん中に：左右の流れの横幅をそろえる */ SPAN = 546, k = SPAN / cfg.total;
+    var NW = 54, XL = 1000 - 560, XRt = 1000 + 560 - NW, XC = (XL + XRt) / 2, /* 総資産の柱を真ん中に：左右の流れの横幅をそろえる */ SPAN = 546, k = SPAN / cfg.total;
     function rect(x, y, h, c) { B.add('<rect x="' + x + '" y="' + y.toFixed(1) + '" width="' + NW + '" height="' + Math.max(h, 2).toFixed(1) + '" fill="' + c + '"/>'); }
     function band(x0, a0, b0, x1, a1, b1, c) {
       var m = (x0 + x1) / 2;
@@ -746,7 +746,7 @@
     B.text(W / 2, 92, ttlB, { size: TTLB_SIZE, weight: 900, fill: BSC.navy });
     // 図の本体は少し小さくして、下に余白をつくる
     var scXB = W / 2, scYB = 130;
-    B.add('<g transform="translate(' + scXB + ' ' + (scYB + 40) + ') scale(0.9) translate(' + (-scXB) + ' ' + (-scYB) + ')">');
+    B.add('<g transform="translate(' + scXB + ' ' + (scYB + 0) + ') scale(1) translate(' + (-scXB) + ' ' + (-scYB) + ')">');
 
     // 中央：総資産
     var cT = 303, cB = cT + SPAN;
@@ -759,18 +759,21 @@
     }
 
     // 左：資産の内訳（198〜972の帯に等間隔）
+    // 小さい箱でも名前・金額・割合の3行が重ならないよう、箱ごとに最低の高さ（枠）をとり、箱は枠の真ん中に置く
     var A = cfg.assets, hs = A.map(function (a) { return Math.max(a.v * k, 6); });
-    var gapL = A.length > 1 ? (774 - hs.reduce(function (s, h) { return s + h; }, 0)) / (A.length - 1) : 0;
-    var y = 198, cut = cT, lastCy = -1e9;
+    var MINS = 78, slotsA = hs.map(function (h) { return Math.max(h, MINS); });
+    var gapL = A.length > 1 ? Math.max(4, (774 - slotsA.reduce(function (s, h) { return s + h; }, 0)) / (A.length - 1)) : 0;
+    var blockA = slotsA.reduce(function (s, h) { return s + h; }, 0) + gapL * (A.length - 1);
+    var y = 198 + Math.max(0, (774 - blockA) / 2), cut = cT;
     A.forEach(function (a, i) {
-      var h = hs[i], hv = a.v * k;
-      rect(XL, y, h, BSC.asset);
-      band(XL + NW, y, y + hv, XC, cut, cut + hv, BSC.aflow);
-      var cy = Math.max(y + h / 2, lastCy + 74); lastCy = cy;
+      var h = hs[i], hv = a.v * k, ny = y + (slotsA[i] - h) / 2;
+      rect(XL, ny, h, BSC.asset);
+      band(XL + NW, ny, ny + hv, XC, cut, cut + hv, BSC.aflow);
+      var cy = y + slotsA[i] / 2;
       B.text(XL - 30, cy - 14, a.label, { size: 22, weight: 900, fill: BSC.navy, anchor: 'end' });
       B.text(XL - 30, cy + 13, f(a.v), { size: 21, fill: BSC.navy, anchor: 'end' });
       B.text(XL - 30, cy + 36, pct(a.v), { size: 16, fill: BSC.muted, anchor: 'end' });
-      cut += hv; y += h + gapL;
+      cut += hv; y += slotsA[i] + gapL;
     });
 
     // 右：負債と純資産（226〜946の帯に等間隔）
