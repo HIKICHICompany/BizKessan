@@ -572,7 +572,9 @@
     lines(XG + NW / 2, cT + cH + 6, [['売上原価', 30, 900], ['(' + fmt(P.cogs) + ')', 28, 700], ['売上の' + rt(P.cogs, P.rev).toFixed(1) + '%', 18, 500, M], [has(Pp.cogs) ? pp(rt(P.cogs, P.rev), rt(Pp.cogs, Pp.rev)) : '', 18, 500, M]]);
     var SGAN = cfg.sgaName, NONOPN = cfg.nonopName, TAXN = cfg.ifrs ? '法人所得税' : '法人税等';
     if (P.op >= 0) {
-      var oT = 170, oH = Hf(P.op), sT = Math.max(440, oT + oH + 60), sH = P.sga * k, gCut = gT + P.op * k;
+      var oT = 170, oH = Hf(P.op), sH = P.sga * k, gCut = gT + P.op * k;
+      // 販管費の箱は、流れが平らな線にならないよう、出どころより少し下に置く（下にはみ出さない範囲で）
+      var sT = Math.min(Math.max(440, oT + oH + 60, gCut + 90), Math.max(440, oT + oH + 60, 900 - sH - 110));
       flow(XG + NW, gT, gCut, XO, oT, oT + oH, PAL.gnflow); flow(XG + NW, gCut, gT + gH, XO, sT, sT + sH, PAL.sgaflow);
       node(XO, oT, oH, PAL.op); node(XO, sT, sH, PAL.sga);
       lines(XO + NW / 2, oT - 150, [['営業利益', 32, 900, GT], [fmt(P.op), 32, 700, GT], ['利益率 ' + rt(P.op, P.rev).toFixed(1) + '%', 19, 500, M], [has(Pp.op) ? pp(rt(P.op, P.rev), rt(Pp.op, Pp.rev)) : '', 19, 500, M]]);
@@ -584,8 +586,10 @@
       if (P.ni >= 0) {
         var nT = 140, nH = Hf(P.ni), o = oT, ni0 = nT + inSum * k;
         flow(XO + NW, o, o + (P.ni - inSum) * k, XF, ni0, nT + P.ni * k, PAL.gnflow); o += (P.ni - inSum) * k;
+        var yNext = Math.max(262, nT + nH + 50);
         outs.forEach(function (a, i) {
-          var yT = Math.max(262, nT + nH + 50) + i * 64, v = a[1];
+          // 箱どうしが重ならないよう、前の箱の高さ＋すき間の下に置く
+          var yT = yNext, v = a[1]; yNext = yT + Hf(v) + 52;
           flow(XO + NW, o, o + v * k, XF, yT, yT + Hf(v), PAL.cogsflow); o += v * k; node(XF, yT, Hf(v), PAL.cogs);
           lines(XF + NW + 14, yT - 16, [[a[0] + ' (' + fmt(v) + ')', 20, 900]], 'start');
         });
