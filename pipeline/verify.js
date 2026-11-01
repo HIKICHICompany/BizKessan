@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path');
 const dir=path.join(__dirname,'..','data','companies');
 let docs=0,plOK=0,bsOK=0,plNG=[],bsNG=[],bad=[];
-for(const f of fs.readdirSync(dir)){const co=JSON.parse(fs.readFileSync(path.join(dir,f)));
+for(const f of fs.readdirSync(dir).filter(x=>x.endsWith('.json'))){const co=JSON.parse(fs.readFileSync(path.join(dir,f)));
  for(const d of co.docs){docs++;
   if(d.pl.ok){plOK++;const c=d.pl.cur,t=d.pl.unit.div*3;
     const ok=Math.abs(c.op+c.nonop+c.sp-c.tax-c.ni)<=t && Math.abs((c.gp??c.rev)-c.sga-c.op)<=t;

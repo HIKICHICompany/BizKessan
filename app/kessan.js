@@ -208,14 +208,24 @@
     // 引当金は、同じ区分に破産更生債権などがあればそこから差し引き、なければ「その他」に含める（雛形どおり）
     leaves.forEach(function (l) {
       if (l.val === undefined || l.val >= 0) return;
-      // 引当金の相手：同じ区分の債権（破産更生債権・貸付金・立替金・未収・売掛・保証金など）で、引当金より大きいもの
-      var same = leaves.filter(function (x) { return x !== l && x.p === l.p && x.val > 0; });
-      var isClaim = function (x) { return /ClaimsProvable|Bankruptcy|Loans|Receivable|Advance|Guarantee|Deposit/i.test(ln(x.c)) || /債権|貸付|立替|未収|売掛|保証金|差入/.test(labelOf[x.c] || ''); };
-      var cand = same.filter(isClaim).filter(function (x) { return x.val >= -l.val; });
-      if (!cand.length) cand = same.filter(function (x) { return x.val >= -l.val; });
-      cand.sort(function (a, b) { return (/ClaimsProvable|Bankruptcy/i.test(ln(b.c)) ? 1 : 0) - (/ClaimsProvable|Bankruptcy/i.test(ln(a.c)) ? 1 : 0) || b.val - a.val; });
-      var tgt = cand[0];
-      if (tgt) { tgt.val += l.val; if (tgt.pv !== undefined && l.pv !== undefined) tgt.pv += l.pv; tgt.netted = true; l.val = undefined; }
+      // 引当金の相手：同じ区分の債権。破産更生債権→売掛金・貸付金・立替金→保証金の順に、大きいものから差し引く
+      var rank = function (x) {
+        var n = ln(x.c), lb = labelOf[x.c] || '';
+        if (/^Cash|現金/.test(n + lb)) return -1;
+        if (/ClaimsProvable|Bankruptcy|破産更生/.test(n + lb)) return 3;
+        if (/Receivable|Loans|Advance|売掛|貸付|立替|未収/.test(n + lb)) return 2;
+        if (/Guarantee|保証金|差入/.test(n + lb)) return 1;
+        return 0;
+      };
+      var cands = leaves.filter(function (x) { return x !== l && x.p === l.p && x.val > 0 && rank(x) >= 0; })
+        .sort(function (a, b) { return rank(b) - rank(a) || b.val - a.val; });
+      var rest = -l.val, restP = l.pv !== undefined ? -l.pv : 0;
+      cands.forEach(function (x) {
+        if (rest <= 0 || (rank(x) === 0 && cands.some(function (y) { return rank(y) > 0 && y.val > 0; }))) return;
+        var take = Math.min(rest, x.val); x.val -= take; rest -= take; x.netted = true;
+        if (x.pv !== undefined && restP > 0) { var tp = Math.min(restP, x.pv); x.pv -= tp; restP -= tp; }
+      });
+      if (rest <= 0) l.val = undefined; else l.val = -rest;
     });
     leaves.forEach(function (l) {
       var val = l.val; if (val === undefined) return;
@@ -247,7 +257,7 @@
       assets.push({ label: ifrs ? 'その他の資産' : 'その他', v: otherSum });
       var parts = others.filter(function (g) { return g.v > 0 && g.label !== 'その他'; }).sort(function (a, b) { return b.v - a.v; }).map(function (g) { return g.label.replace(/^その他の?/, 'その他'); });
       var uniq = parts.filter(function (x, i) { return parts.indexOf(x) === i; });
-      var neg = others.some(function (g) { return g.v < 0; });
+      var neg = others.some(function (g) { return g.v < 0 || g.netted; });
       notes.push((ifrs ? 'その他の資産' : 'その他') + 'は' + uniq.slice(0, 6).join('・') + (uniq.length > 6 || others.some(function (g) { return g.label === 'その他'; }) ? 'など' : '') + 'の合計' + (neg ? '（貸倒引当金を差し引き後）' : ''));
     }
 
@@ -329,6 +339,21 @@
     fg: '#1d2433', muted: '#5d6678', rev: '#2b3a67', cogs: '#b3bac8', gp: '#7cbf99', op: '#55a37b', ord: '#3c8a62', ni: '#2a6a49', neg: '#c0563f', sga: '#8b6bb8',
     segflow: 'rgba(43,58,103,0.28)', gnflow: 'rgba(124,191,153,0.45)', cogsflow: 'rgba(179,186,200,0.55)', sgaflow: 'rgba(139,107,184,0.40)', negflow: 'rgba(192,86,63,0.35)'
   };
+  var NOTE_URL = 'https://note.com/hikichi_company';
+  // 決算期の表記：決算が始まる年で FY2026Q2（通期は FY2026）。fye は '2027-03' の形
+  // 決算期の表記：2027年3月期 第2四半期（4〜9月）。四半期は期首からの累計の月
+  function periodLabel(fye, q) {
+    var m = String(fye || '').match(/^(\d{4})-(\d{2})/); if (!m) return '';
+    var y = +m[1], mo = +m[2], head = y + '年' + mo + '月期';
+    if (!q || q === 4) return head + ' 通期';
+    var start = mo % 12 + 1, end = (mo + 3 * q - 1) % 12 + 1;
+    return head + ' 第' + q + '四半期（' + start + '〜' + end + '月）';
+  }
+  function fyCode(fye, q) {
+    var m = String(fye || '').match(/^(\d{4})-(\d{2})/); if (!m) return '';
+    var y = +m[1] - (+m[2] === 12 ? 0 : 1);
+    return 'FY' + y + (q && q !== 4 ? 'Q' + q : '');
+  }
   var FONT = "'Zen Kaku Gothic New','Noto Sans CJK JP','Noto Sans JP',sans-serif";
 
   function svgBuilder(W, H) {
@@ -345,7 +370,7 @@
     };
   }
 
-  function renderPL(cfg) {
+  function renderPL(cfg, opt) {
     // プロジェクトの engine.js の drawSankey と同じ配置（1720×1020、ふち30/20）
     var W = 1780, Hh = 1060, OX = 30, OY = 20;
     var B = svgBuilder(W, Hh);
@@ -377,7 +402,8 @@
       arr.forEach(function (a) { yy += a[1] * 1.22; if (!a[0]) return; var p = T(x, yy); B.text(p[0], p[1], a[0], { size: a[1], weight: a[2] || 500, fill: a[3] || PAL.fg, anchor: anchor || 'middle' }); });
     }
     var M = PAL.muted, GT = PAL.ord, NEG = PAL.neg;
-    B.text(OX + 860, OY + 76, '絵でみる儲けの流れ：' + cfg.name + '（' + cfg.code + '）', { size: cfg.name.length > 14 ? 52 : 60, weight: 900 });
+    var ttl = cfg.name + '（' + cfg.code + '）' + (opt && opt.period ? '　' + opt.period : '');
+    B.text(OX + 860, OY + 76, ttl, { size: ttl.length > 24 ? 50 : 58, weight: 900 });
     gy = 92;
     var XS = 310, XR = 600, XG = 880, XO = 1150, XF = 1420;
     var rT = 300, rB = rT + P.rev * k;
@@ -407,10 +433,12 @@
       lines(XS - 24, sy + 4, [[sg.name, sg.name.length > 8 ? 26 : 34, 900]].concat(info), 'end');
       cut += h; sy += h + gapS;
     });
-    // 注記は左下の空いた所に、売上原価のラベルにかからない幅（48字）で折り返す
-    var notesF = [];
-    [cfg.ifrsNote, cfg.segNote].filter(Boolean).forEach(function (t) { for (var i = 0; i < t.length; i += 48) notesF.push(t.slice(i, i + 48)); });
-    notesF.forEach(function (t, i) { var pn = T(20, 860 - (notesF.length - 1 - i) * 20); B.text(pn[0], pn[1], t, { size: 15, fill: M, anchor: 'start' }); });
+    // 注記と出典は左下の枠（売上原価のラベルにかからない幅）に、下から積む
+    var wrapN = function (t, n) { var o = []; for (var i = 0; i < t.length; i += n) o.push(t.slice(i, i + n)); return o; };
+    var footL = [];
+    [cfg.ifrsNote, cfg.segNote].filter(Boolean).forEach(function (t) { wrapN(t, 48).forEach(function (x) { footL.push([x, 15]); }); });
+    wrapN('単位：' + U.name + '｜出典：' + cfg.source, 50).forEach(function (x) { footL.push([x, 15]); });
+    footL.forEach(function (a, i) { var pn = T(20, 880 - (footL.length - 1 - i) * 19); B.text(pn[0], pn[1], a[0], { size: a[1], fill: M, anchor: 'start' }); });
     node(XR, rT, rB - rT, PAL.rev);
     lines(XR + NW / 2, rT - 128, [['売上高', 32, 900], [fmt(P.rev), 32, 700], [yoy(P.rev, Pp.rev), 19, 500, M]]);
     var gT = 230, gH = P.gp * k, cH = P.cogs * k, cT = Math.max(gT + gH + 60, Math.min(680, 860 - cH - 110)), rCut = rT + P.gp * k;
@@ -480,8 +508,9 @@
         lines(XF - 60, 200, [['当期純損益', 30, 900, P.ni < 0 ? NEG : GT], [(P.ni < 0 ? '△' : '') + fmt(Math.abs(P.ni)), 30, 700, P.ni < 0 ? NEG : GT]], 'start');
       }
     }
-    var pc = T(1700, 900); B.text(pc[0], pc[1], '©HIKICHI＆Company', { size: 18, weight: 700, fill: M, anchor: 'end' });
-    var ps = T(20, 900); B.text(ps[0], ps[1], '単位：' + U.name + '｜出典：' + cfg.source, { size: 17, fill: M, anchor: 'start' });
+    var pc = T(1700, 878); B.text(pc[0], pc[1], '©HIKICHI＆Company', { size: 18, weight: 700, fill: M, anchor: 'end' });
+    var pu = T(1700, 902); B.text(pu[0], pu[1], NOTE_URL, { size: 16, fill: M, anchor: 'end' });
+    var pk = T(20, 910); B.text(pk[0], pk[1], '絵でみる経営成績', { size: 24, weight: 900, fill: PAL.rev, anchor: 'start' });
     return { svg: B.done(), width: W, height: Hh };
   }
 
@@ -490,8 +519,12 @@
     navy: '#2b3a67', asset: '#283862', aflow: 'rgba(160,201,240,0.62)', liab: '#b8bfcd', lflow: 'rgba(184,191,205,0.45)',
     eq: '#6bb3a4', eqStrong: '#1f6157', eflow: 'rgba(107,179,164,0.38)', liabText: '#4a5468', eqText: '#1d5a51', muted: '#7a8394'
   };
-  function renderBS(cfg) {
-    var W = 2000, H = 1160, B = svgBuilder(W, H), U = cfg.unit;
+  function renderBS(cfg, opt) {
+    var noteLines = [];
+    var nt = (cfg.notes || []).join('。');
+    for (var ni = 0; ni < nt.length; ni += 118) noteLines.push(nt.slice(ni, ni + 118));
+    var EXT = Math.max(0, noteLines.length - 2) * 22;
+    var W = 2000, H = 1160 + EXT, B = svgBuilder(W, H), U = cfg.unit;
     var f = function (v) { return Math.round(v / U.div).toLocaleString('ja-JP'); };
     var pct = function (v) { return '総資産の' + (v / cfg.total * 100).toFixed(1) + '%'; };
     var NW = 54, XL = 420, XC = 780, XRt = 1328, SPAN = 546, k = SPAN / cfg.total;
@@ -500,7 +533,8 @@
       var m = (x0 + x1) / 2;
       B.add('<path d="M' + x0 + ',' + a0 + ' C' + m + ',' + a0 + ' ' + m + ',' + a1 + ' ' + x1 + ',' + a1 + ' L' + x1 + ',' + b1 + ' C' + m + ',' + b1 + ' ' + m + ',' + b0 + ' ' + x0 + ',' + b0 + ' Z" fill="' + c + '" stroke="' + c + '" stroke-width="0.6"/>');
     }
-    B.text(W / 2, 92, '絵でみるファイナンス：' + cfg.name + '（' + cfg.code + '）', { size: cfg.name.length > 16 ? 46 : 52, weight: 900, fill: BSC.navy });
+    var ttlB = cfg.name + '（' + cfg.code + '）' + (opt && opt.period ? '　' + opt.period : '');
+    B.text(W / 2, 92, ttlB, { size: ttlB.length > 26 ? 46 : 52, weight: 900, fill: BSC.navy });
 
     // 中央：総資産
     var cT = 303, cB = cT + SPAN;
@@ -562,13 +596,15 @@
     midLabel(ryEq, '純資産', cfg.netAssets, BSC.eqText);
 
     // 足もと
-    if (cfg.notes && cfg.notes.length) B.text(40, 1094, cfg.notes.join('。'), { size: 16, fill: BSC.muted, anchor: 'start' });
-    B.text(40, 1130, '単位：' + U.name + '｜出典：' + cfg.source, { size: 17, fill: BSC.muted, anchor: 'start' });
-    B.text(1960, 1130, '©HIKICHI＆Company', { size: 19, weight: 700, fill: BSC.navy, anchor: 'end' });
+    noteLines.forEach(function (t, i) { B.text(40, 1078 + EXT - (noteLines.length - 1 - i) * 22, t, { size: 15, fill: BSC.muted, anchor: 'start' }); });
+    B.text(40, 1106 + EXT, '単位：' + U.name + '｜出典：' + cfg.source, { size: 16, fill: BSC.muted, anchor: 'start' });
+    B.text(40, 1142 + EXT, '絵でみる財政状態', { size: 26, weight: 900, fill: BSC.navy, anchor: 'start' });
+    B.text(1960, 1108 + EXT, '©HIKICHI＆Company', { size: 19, weight: 700, fill: BSC.navy, anchor: 'end' });
+    B.text(1960, 1134 + EXT, NOTE_URL, { size: 17, fill: BSC.muted, anchor: 'end' });
     return { svg: B.done(), width: W, height: H };
   }
 
-  var api = { extractPL: extractPL, extractBS: extractBS, renderPL: renderPL, renderBS: renderBS };
+  var api = { extractPL: extractPL, extractBS: extractBS, renderPL: renderPL, renderBS: renderBS, fyCode: fyCode, periodLabel: periodLabel };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Kessan = api;
 })(this);

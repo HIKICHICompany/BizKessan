@@ -102,11 +102,11 @@
   function section(d, co, isMain) {
     var s = document.createElement('section');
     s.innerHTML = '<div class="period"><h2></h2><p></p></div>';
-    s.querySelector('h2').textContent = co.name + '（' + co.code + '）' + d.label;
+    s.querySelector('h2').textContent = co.name + '（' + co.code + '）' + Kessan.periodLabel(d.fye, d.q);
     s.querySelector('p').innerHTML = srcBadge(d) + '<span></span>';
     s.querySelector('p span:last-child').textContent = (d.title || '') + '　' + (d.disclosed ? fmtDate(d.disclosed) + ' 開示' : '');
-    s.appendChild(figure(d.pl, 'pl', '絵でみる儲けの流れ', d, co));
-    s.appendChild(figure(d.bs, 'bs', '絵でみるファイナンス', d, co));
+    s.appendChild(figure(d.pl, 'pl', '絵でみる経営成績', d, co));
+    s.appendChild(figure(d.bs, 'bs', '絵でみる財政状態', d, co));
     if (isMain) s.insertAdjacentHTML('beforeend', '<p class="hint">図をタップすると拡大し、横にずらして見られます。</p>');
     return s;
   }
@@ -119,7 +119,8 @@
       f.firstChild.textContent = name + '：' + ((cfg && cfg.reason) || 'この期の数字からは描けませんでした。');
       return f;
     }
-    var out = kind === 'pl' ? Kessan.renderPL(cfg) : Kessan.renderBS(cfg);
+    var opt = { period: Kessan.periodLabel(d.fye, d.q) };
+    var out = kind === 'pl' ? Kessan.renderPL(cfg, opt) : Kessan.renderBS(cfg, opt);
     var id = co.code + '_' + d.fye.replace('-', '') + 'Q' + d.q + '_' + kind;
     figs[id] = { svg: out.svg, w: out.width, h: out.height, file: fileName(co, d, kind) };
     f.innerHTML = '<div class="chart" tabindex="0" role="img"></div><figcaption><span class="name"></span>' +
@@ -143,8 +144,8 @@
     var top = docs[0];
     var qs = docs.filter(function (d) { return d !== top && d.fye === top.fye; });
     var ys = docs.filter(function (d) { return d !== top && d.q === 4 && d.fye < top.fye; });
-    fill($('chipsQ'), qs, function (d) { return d.q === 4 ? '通期' : d.q === 2 ? '第2四半期（中間）' : '第' + d.q + '四半期'; }, '当期のほかの四半期はまだありません');
-    fill($('chipsY'), ys, function (d) { return d.label.replace(/ 通期$/, ''); }, '過去の年次決算は、データがたまりしだい表示します');
+    fill($('chipsQ'), qs, function (d) { return Kessan.periodLabel(d.fye, d.q).replace(/^\S+ /, ''); }, '当期のほかの四半期はまだありません');
+    fill($('chipsY'), ys, function (d) { return Kessan.periodLabel(d.fye, 4).replace(/ 通期$/, ''); }, '過去の年次決算は、データがたまりしだい表示します');
     $('more').hidden = false;
   }
   function fill(box, docs, lab, empty) {

@@ -57,7 +57,13 @@ public class MainActivity extends Activity {
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
-                return !req.getUrl().toString().startsWith("https://appassets.androidplatform.net/");
+                String u = req.getUrl().toString();
+                if (u.startsWith("https://appassets.androidplatform.net/")) return false;
+                // noteなど外のページは、スマホのブラウザで開く
+                if (u.startsWith("https://")) {
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(u))); } catch (Exception e) { /* 開けなくても続ける */ }
+                }
+                return true;
             }
         });
         web.addJavascriptInterface(new Bridge(), "AndroidBridge");

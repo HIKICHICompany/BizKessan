@@ -44,5 +44,6 @@ jobs:
             echo "新しい決算はありませんでした"
           else
             git commit -m "決算データ更新 $(TZ=Asia/Tokyo date +%Y-%m-%d)"
+            git pull --rebase -X theirs origin main
             git push
           fi
