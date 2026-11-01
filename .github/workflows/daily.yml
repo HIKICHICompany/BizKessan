@@ -2,8 +2,10 @@ name: 毎日の取り込み（TDnetの決算短信）
 
 on:
   schedule:
-    # 日本時間 22:17 に毎日1回（多くの決算短信は15時〜20時に出るため）
-    - cron: '17 13 * * *'
+    # 日本時間で 15:33、16:03〜18:03 は30分ごと、19:03〜23:03 は1時間ごと（1日11回）
+    # ちょうどの時刻は混んで遅れやすいので、3分ずらしている（GitHubの時刻は世界標準時＝日本時間−9時間）
+    - cron: '33 6-8 * * *'
+    - cron: '3 7-14 * * *'
   workflow_dispatch:
     inputs:
       from:
@@ -39,7 +41,7 @@ jobs:
       - name: 銘柄の区分を更新する（週1回：東証の上場銘柄一覧と日経225）
         working-directory: pipeline
         run: node market.js || echo "区分の更新は次回に持ち越し"
-      - name: 今日と昨日の決算短信を取り込む
+      - name: 今日と昨日の決算短信を取り込む（取り込み済みはとばす）
         working-directory: pipeline
         run: node fetch.js ${{ inputs.from }} ${{ inputs.to }} ${{ inputs.redo && '--redo' || '' }}
       - name: 変わった数字を保存する

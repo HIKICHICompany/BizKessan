@@ -21,7 +21,7 @@ const ROOT = path.join(__dirname, '..');
 const DATA = path.join(ROOT, 'data');
 const COS = path.join(DATA, 'companies');
 const BASE = 'https://www.release.tdnet.info/inbs/';
-const UA = 'BizKessan/0.1 (+https://github.com/HIKICHICompany/BizKessan; once-a-day)';
+const UA = 'BizKessan/0.1 (+https://github.com/HIKICHICompany/BizKessan; up to 11 times a day, new filings only)';
 const WAIT_MS = 1000; // TDnetへの負担を抑える：1件ごとに1秒あける
 
 class DP { parseFromString(t, m) { return new DOMParser({ onError() {} }).parseFromString(t, m); } }
