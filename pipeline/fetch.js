@@ -88,9 +88,14 @@ function periodOf(files) {
     // 変則決算などで決算期の欄がないとき：当期の終わり（CurrentYear…）の日付を使う
     const c = d.contexts.CurrentYearInstant || d.contexts.CurrentYearDuration;
     fye = c ? (c.instant || c.end || '') : '';
+    if (!fye) {
+      // それもなければ、当期の文脈のうち一番遅い日付
+      Object.keys(d.contexts).filter(k => /^Current/.test(k)).forEach(k => { const x = d.contexts[k], v = x.instant || x.end || ''; if (v > fye) fye = v; });
+    }
   }
   const qf = d.facts.find(f => f.summary && /_QuarterlyPeriod$/.test(f.concept));
-  const q = qf ? qf.value : 4;
+  let q = qf ? qf.value : 4;
+  if (!qf) { const m = z2h(d.summary.DocumentName || '').match(/第\s*([1-3])\s*四半期/); if (m) q = +m[1]; }
   return { fye, q, company: d.summary.CompanyName || '' };
 }
 
