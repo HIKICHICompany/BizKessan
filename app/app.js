@@ -87,15 +87,39 @@
         return;
       }
       remember({ code: it.code, name: co.name || it.name });
-      var docs = bestPerPeriod(co.docs);
-      current = { co: co, docs: docs };
+      current = { co: co, docs: bestPerPeriod(co.docs) };
       status('');
-      $('main').appendChild(section(docs[0], co, true));
-      chips(docs);
+      draw();
     }).catch(function (e) {
       status('データを読み込めませんでした。電波の状態を確かめて、もう一度お試しください。（' + e.message + '）', true);
     });
   }
+
+  function draw() {
+    if (!current) return;
+    $('main').innerHTML = ''; $('extra').innerHTML = ''; figs = {};
+    $('main').appendChild(section(current.docs[0], current.co, true));
+    chips(current.docs);
+  }
+
+  /* ---------- 配色 ---------- */
+  var themeId = Kessan.setTheme(load('theme', 'standard'));
+  function drawThemes() {
+    var box = $('themeList'); box.innerHTML = '';
+    Kessan.themes().forEach(function (t) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'theme'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(t.id === themeId));
+      var sw = '<span class="sw">';
+      for (var i = 0; i < 6; i += 2) sw += '<span><i style="background:' + t.swatch[i] + '"></i><i style="background:' + t.swatch[i + 1] + '"></i></span>';
+      b.innerHTML = sw + '</span><span class="tn"></span>';
+      b.querySelector('.tn').textContent = t.name;
+      b.addEventListener('click', function () { themeId = Kessan.setTheme(t.id); store('theme', themeId); drawThemes(); draw(); });
+      box.appendChild(b);
+    });
+  }
+  $('setBtn').addEventListener('click', function () {
+    var p = $('settings'), open = p.hidden; p.hidden = !open; this.setAttribute('aria-expanded', String(open)); if (open) drawThemes();
+  });
 
   function srcBadge(d) { return d.kind === 'yuho' ? '<span class="src yuho">有報</span>' : '<span class="src tanshin">短信</span>'; }
 

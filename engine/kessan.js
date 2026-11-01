@@ -519,6 +519,44 @@
     navy: '#2b3a67', asset: '#283862', aflow: 'rgba(160,201,240,0.62)', liab: '#b8bfcd', lflow: 'rgba(184,191,205,0.45)',
     eq: '#6bb3a4', eqStrong: '#1f6157', eflow: 'rgba(107,179,164,0.38)', liabText: '#4a5468', eqText: '#1d5a51', muted: '#7a8394'
   };
+  /* ================= 配色パターン =================
+   * 6色：資産・負債・資本（貸借対照表）と、収益・費用・利益（損益）。
+   * 資産と収益、負債と費用、資本と利益は近い色に寄せる。
+   * 「標準」は、これまでの配色（売上高＝紺、売上原価＝灰、販管費＝紫、利益＝緑）そのまま。 */
+  var DEFAULT_PAL = JSON.parse(JSON.stringify(PAL)), DEFAULT_BSC = JSON.parse(JSON.stringify(BSC));
+  var THEMES = [
+    { id: 'standard', name: '標準', c: { asset: '#283862', revenue: '#2b3a67', liability: '#b8bfcd', cost: '#b3bac8', equity: '#6bb3a4', profit: '#55a37b', sga: '#8b6bb8' } },
+    { id: 'wa', name: '和（藍・鈍色・松葉）', c: { asset: '#22406f', revenue: '#2c5088', liability: '#8f877b', cost: '#9c9488', equity: '#5a7a34', profit: '#6c8e3c', sga: '#6e5a7e' } },
+    { id: 'yuubae', name: '夕映え', c: { asset: '#4a3c88', revenue: '#5a4b9c', liability: '#c6a685', cost: '#d0b292', equity: '#c4701c', profit: '#d68228', sga: '#9c6b8f', neg: '#7a1f2b' } },
+    { id: 'pastel', name: 'パステル', c: { asset: '#6f97cc', revenue: '#83a9da', liability: '#d4b0b0', cost: '#dfbdbd', equity: '#7fbf9c', profit: '#8fcbaa', sga: '#b9a3d6' } },
+    { id: 'mono', name: 'モノクロ（印刷向け）', c: { asset: '#2b2b2b', revenue: '#3a3a3a', liability: '#a3a3a3', cost: '#b2b2b2', equity: '#646464', profit: '#757575', sga: '#8a8a8a', neg: '#111111' } }
+  ];
+  function hex(c) { var n = parseInt(c.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+  function toHex(a) { return '#' + a.map(function (v) { return ('0' + Math.round(Math.max(0, Math.min(255, v))).toString(16)).slice(-2); }).join(''); }
+  function mix(c, d, t) { var a = hex(c), b = hex(d); return toHex(a.map(function (v, i) { return v + (b[i] - v) * t; })); }
+  function rgba(c, al) { var a = hex(c); return 'rgba(' + a[0] + ',' + a[1] + ',' + a[2] + ',' + al + ')'; }
+  function lum(c) { var a = hex(c); return (0.299 * a[0] + 0.587 * a[1] + 0.114 * a[2]) / 255; }
+  function ink(c) { var x = c; for (var i = 0; i < 6 && lum(x) > 0.5; i++) x = mix(x, '#000000', 0.18); return x; } // 文字は読める濃さまで暗くする
+  function setTheme(id) {
+    var t = THEMES.filter(function (x) { return x.id === id; })[0] || THEMES[0];
+    if (t.id === 'standard') { Object.assign(PAL, DEFAULT_PAL); Object.assign(BSC, DEFAULT_BSC); return t.id; }
+    var c = t.c, neg = c.neg || '#c0563f';
+    Object.assign(PAL, {
+      rev: c.revenue, segflow: rgba(c.revenue, 0.28),
+      cogs: c.cost, cogsflow: rgba(c.cost, 0.55),
+      sga: ink(c.sga), sgaflow: rgba(c.sga, 0.40),
+      gp: mix(c.profit, '#ffffff', 0.3), op: c.profit, ord: ink(mix(c.profit, '#000000', 0.2)), ni: mix(c.profit, '#000000', 0.3),
+      gnflow: rgba(mix(c.profit, '#ffffff', 0.3), 0.45), neg: neg, negflow: rgba(neg, 0.35)
+    });
+    Object.assign(BSC, {
+      navy: ink(c.asset), asset: c.asset, aflow: rgba(mix(c.asset, '#ffffff', 0.62), 0.62),
+      liab: c.liability, lflow: rgba(c.liability, 0.45), liabText: ink(mix(c.liability, '#000000', 0.45)),
+      eq: mix(c.equity, '#ffffff', 0.15), eqStrong: mix(c.equity, '#000000', 0.35), eflow: rgba(c.equity, 0.36), eqText: ink(mix(c.equity, '#000000', 0.4))
+    });
+    return t.id;
+  }
+  function themes() { return THEMES.map(function (t) { var c = t.c; return { id: t.id, name: t.name, swatch: [c.asset, c.revenue, c.liability, c.cost, c.equity, c.profit] }; }); }
+
   function renderBS(cfg, opt) {
     var noteLines = [];
     var nt = (cfg.notes || []).join('。');
@@ -604,7 +642,7 @@
     return { svg: B.done(), width: W, height: H };
   }
 
-  var api = { extractPL: extractPL, extractBS: extractBS, renderPL: renderPL, renderBS: renderBS, fyCode: fyCode, periodLabel: periodLabel };
+  var api = { extractPL: extractPL, extractBS: extractBS, renderPL: renderPL, renderBS: renderBS, fyCode: fyCode, periodLabel: periodLabel, setTheme: setTheme, themes: themes };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Kessan = api;
 })(this);

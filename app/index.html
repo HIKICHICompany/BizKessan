@@ -21,6 +21,16 @@
   .beta { display: inline-block; margin-left: 8px; font-size: 13px; font-weight: 700; color: #fff; background: var(--navy); padding: 2px 8px; border-radius: 4px; vertical-align: middle; }
   .tag { margin: 2px 0 0; color: var(--sub); font-size: 13px; }
 
+  .settings { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 0 0 14px; }
+  .settings[hidden] { display: none; }
+  .settings h2 { font-size: 16px; margin: 0 0 4px; }
+  .settings p { font-size: 13px; color: var(--sub); margin: 0 0 10px; line-height: 1.6; }
+  .theme { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 8px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; text-align: left; }
+  .theme:hover, .theme:focus-visible { background: var(--navy-soft); outline: none; }
+  .theme[aria-checked="true"] { background: var(--navy-soft); font-weight: 700; }
+  .sw { display: inline-flex; gap: 6px; }
+  .sw span { display: inline-flex; }
+  .sw i { display: block; width: 14px; height: 22px; }
   .search { position: relative; }
   .search input { width: 100%; font: inherit; font-size: 18px; padding: 14px 16px; border-radius: 10px;
     border: 1.5px solid var(--line); background: var(--paper); color: var(--ink); outline: none; }
@@ -76,7 +86,13 @@
       <h1><ruby>美図<rt>ビジュ</rt></ruby>決算<span class="beta">β</span></h1>
       <p class="tag">儲けは、川の流れのように</p>
     </div>
+    <button type="button" id="setBtn" class="btn" aria-expanded="false" aria-controls="settings">配色</button>
   </header>
+  <section id="settings" class="settings" hidden>
+    <h2>配色を選ぶ</h2>
+    <p>左から 資産・収益／負債・費用／資本・利益 の色です。共有や保存する画像にも反映されます。</p>
+    <div id="themeList" role="radiogroup" aria-label="配色"></div>
+  </section>
 
   <div class="search" role="search">
     <input id="q" type="search" autocomplete="off" placeholder="銘柄名か証券コード" aria-label="銘柄名か証券コード" aria-controls="suggest">
