@@ -537,13 +537,15 @@
     var segSum = segs.reduce(function (a, b) { return a + b.sales; }, 0) || 1;
     var gapS = segs.length > 1 ? Math.min(120, (560 - P.rev * k) / (segs.length - 1)) : 0;
     var sy = segs.length > 1 ? 160 : rT, cut = rT;
-    if (segs.length > 2) {
-      // 注記にかからない高さに収める
-      var segBottom = 880 - footL.length * 19 - 12, avail = Math.min(660, segBottom - 120);
+    if (segs.length >= 2) {
+      // 注記にかからない高さの中で、セグメントを上下にバランスよく広げ、売上高の箱を中心にそろえる
+      var segTop = 130, segBottom = Math.min(800, 880 - footL.length * 19 - 12), avail = segBottom - segTop;
       var MINH = Math.max(64, Math.min(86, (avail - 10 * (segs.length - 1)) / segs.length));
       var hs = segs.map(function (sg) { return sg.sales / segSum * P.rev * k; }), slots = hs.map(function (h) { return Math.max(h, MINH); });
-      var g = Math.max(6, Math.min(60, (Math.min(540, avail) - slots.reduce(function (a, b) { return a + b; }, 0)) / (segs.length - 1)));
-      var y = 120;
+      var slotSum = slots.reduce(function (a, b) { return a + b; }, 0);
+      var g = Math.max(6, Math.min(100, (avail - slotSum) / (segs.length - 1)));
+      var blockH = slotSum + g * (segs.length - 1), mid = (rT + rB) / 2;
+      var y = Math.max(segTop, Math.min(mid - blockH / 2, segBottom - blockH));
       segs.forEach(function (sg, i) {
         var h = hs[i], ny = y + (slots[i] - h) / 2;
         node(XS, ny, h, PAL.rev); flow(XS + NW, ny, ny + h, XR, cut, cut + h, PAL.segflow);
@@ -595,10 +597,10 @@
         });
         var iy = nT;
         ins.forEach(function (a, i) {
-          var ix = 1300 - i * 70, iyy = 110, v = a[1];
+          var ix = 1290 + i * 88, iyy = 110, v = a[1]; // 2つあるときも、営業利益の見出しや互いに重ならない間隔
           ad('rect', { x: ix, y: iyy, width: 30, height: Math.max(v * k, 3), fill: PAL.op });
           flow(ix + 30, iyy, iyy + v * k, XF, iy, iy + v * k, PAL.gnflow); iy += v * k;
-          lines(ix + 15, iyy - 52, [[a[0], 17, 700, GT], ['+' + fmt(v), 17, 700, GT]]);
+          lines(ix + 15, iyy - 52, [[a[0], ins.length > 1 ? 16 : 17, 700, GT], ['+' + fmt(v), ins.length > 1 ? 16 : 17, 700, GT]]);
         });
         node(XF, nT, nH, PAL.ni);
         lines(XF + NW + 14, nT - 46, [['当期純利益', 30, 900, GT], [fmt(P.ni), 30, 700, GT], ['利益率 ' + rt(P.ni, P.rev).toFixed(1) + '%', 18, 500, M], [has(Pp.ni) ? pp(rt(P.ni, P.rev), rt(Pp.ni, Pp.rev)) : '', 18, 500, M]], 'start');
