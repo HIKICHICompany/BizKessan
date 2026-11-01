@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 美図決算のアイコン：売上（紺）から利益（緑）と原価（灰）に分かれ、利益がさらに営業利益と販管費（紫）に分かれる -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="0.8" android:scaleY="0.8" android:translateY="1.5">
+    <!-- 流れ -->
+    <path android:fillColor="#7CBF99" android:fillAlpha="0.55" android:pathData="M33,32 C43,32 43,30 53,30 L53,43 C43,43 43,45 33,45 Z" />
+    <path android:fillColor="#B3BAC8" android:fillAlpha="0.65" android:pathData="M33,45 C43,45 43,52 53,52 L53,79 C43,79 43,72 33,72 Z" />
+    <path android:fillColor="#7CBF99" android:fillAlpha="0.55" android:pathData="M59,30 C67,30 67,26 75,26 L75,32 C67,32 67,36 59,36 Z" />
+    <path android:fillColor="#8B6BB8" android:fillAlpha="0.45" android:pathData="M59,36 C67,36 67,40 75,40 L75,47 C67,47 67,43 59,43 Z" />
+    <!-- 柱 -->
+    <path android:fillColor="#2B3A67" android:pathData="M27,32 h6 v40 h-6 z" />
+    <path android:fillColor="#7CBF99" android:pathData="M53,30 h6 v13 h-6 z" />
+    <path android:fillColor="#B3BAC8" android:pathData="M53,52 h6 v27 h-6 z" />
+    <path android:fillColor="#2A6A49" android:pathData="M75,26 h6 v6 h-6 z" />
+    <path android:fillColor="#8B6BB8" android:pathData="M75,40 h6 v7 h-6 z" />
+    </group>
+</vector>
