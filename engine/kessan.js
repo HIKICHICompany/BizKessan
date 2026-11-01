@@ -43,6 +43,130 @@
 
   var SEG_SKIP = /^(ReportableSegments|TotalOfReportableSegmentsAndOthers|ReconcilingItems|EntityTotal|ConsolidatedOrNonConsolidated|CorporateAndEliminations|Elimination)/;
 
+  /* ---------- セグメント：売上の内訳 ----------
+   * 1) 報告セグメントの数字（タグ付き）。外部顧客への売上を優先し、なければ
+   *    セグメントの売上からセグメント間の売上を引く。会社ごとに科目名が違うので幅広く拾う。
+   * 2) 単一セグメントの会社で、製品・サービス別などの表（タグなし）があれば、それを内訳に使う。 */
+  var SEG_NONSEG = /RetainedEarnings|Equity|Capital|Treasury|ComprehensiveIncome|NonControlling|Shareholders|ExchangeDifferences|FairValue|CashFlowHedge|Remeasurements|Subscription|Adjust|Adjsut/i;
+  function segFiles(files) { return Object.keys(files).filter(function (n) { return /sg\d*-/i.test(n.split('/').pop()) && /ixbrl\.htm$/i.test(n); }); }
+  function segmentsOf(T, files, cur, pri, c, p) {
+    var sgSet = {}; segFiles(files).forEach(function (n) { sgSet[n] = 1; });
+    var hasSg = Object.keys(sgSet).length > 0;
+    function pick(re, ctx) {
+      var out = {}, base = T.data.contexts[ctx]; if (!base) return out;
+      T.att.forEach(function (f) {
+        if (!re.test(ln(f.concept))) return;
+        if (hasSg && !sgSet[f.file]) return;
+        var x = T.data.contexts[f.ctx]; if (!x || x.members.length !== 1) return;
+        if (x.start !== base.start || x.end !== base.end) return;
+        var mm = x.members[0].split(':').pop();
+        if (SEG_SKIP.test(mm) || SEG_NONSEG.test(mm)) return;
+        if (out[mm] === undefined) out[mm] = f.value;
+      });
+      return out;
+    }
+    var EXT = /^(RevenuesFromExternalCustomers|RevenueFromExternalCustomers|SalesToExternalCustomers|NetSalesToExternalCustomers|OperatingRevenueFromExternalCustomers|RevenuesFromExternalCustomersIFRS|RevenueFromExternalCustomersIFRS|SalesToExternalCustomersIFRS)$/;
+    var TOT = /^(NetSales|NetSalesIFRS|Revenue|Revenues|Revenue\d*IFRS|RevenueIFRS|OperatingRevenue\d*|NetSalesOfCompletedConstructionContracts|OperatingRevenueIFRS|SalesRevenueIFRS)$/;
+    var INTER = /^(IntersegmentSales|IntersegmentSalesOrTransfers|IntersegmentSalesIFRS|TransactionsWithOtherSegments|InterSegmentRevenue\w*)$/;
+    var PROF = /^(SegmentProfitLoss|SegmentProfitLossIFRS|SegmentIncome|OperatingIncome|OperatingIncomeLoss|OperatingProfitLossIFRS|OrdinaryIncome|ProfitLossAttributableToOwnersOfParentIFRS|ProfitLossAttributableToOwnersOfParent)$/;
+    function sales(ctx) {
+      if (!ctx) return {};
+      var e = pick(EXT, ctx); if (Object.keys(e).length) return e;
+      var t = pick(TOT, ctx), i = pick(INTER, ctx);
+      Object.keys(t).forEach(function (k) { if (i[k] !== undefined) t[k] -= i[k]; });
+      return t;
+    }
+    function profit(ctx) {
+      if (!ctx) return {};
+      // 利益の科目が複数あるときは、セグメント利益を先に使う
+      var order = ['SegmentProfitLoss', 'SegmentProfitLossIFRS', 'SegmentIncome', 'OperatingIncome', 'OperatingIncomeLoss', 'OperatingProfitLossIFRS', 'OrdinaryIncome', 'ProfitLossAttributableToOwnersOfParentIFRS', 'ProfitLossAttributableToOwnersOfParent'];
+      for (var i = 0; i < order.length; i++) { var o = pick(new RegExp('^' + order[i] + '$'), ctx); if (Object.keys(o).length) return o; }
+      return {};
+    }
+    function label(k) {
+      var l = T.data.memberLabels[k] || (/OperatingSegmentsNotIncluded|Others?Member$/.test(k) ? 'その他' : k.replace(/(ReportableSegments?)?Member$/, ''));
+      l = l.replace(/セグメント$/, '').replace(/^報告セグメント[・\s]*/, '');
+      return /^Others?$/i.test(l) ? 'その他' : l;
+    }
+    var sc = sales(cur), sp = sales(pri), pc = profit(cur), pp = profit(pri);
+    var segs = Object.keys(sc).filter(function (k) { return sc[k] > 0; }).map(function (k) {
+      return { name: label(k), sales: sc[k], salesPrev: sp[k], profit: pc[k] !== undefined ? pc[k] : null, profitPrev: pp[k] };
+    });
+    segs.sort(function (a, b) { return b.sales - a.sales; });
+    var sum = segs.reduce(function (a, b) { return a + b.sales; }, 0);
+    if (segs.length >= 2 && sum <= c.rev * 1.001 && sum >= c.rev * 0.5) {
+      var rest = c.rev - sum, note = null;
+      // 図に並べるのは最大7つまで。多いときは小さいものを「その他」にまとめる
+      var cap = rest > c.rev * 0.001 ? 6 : 7;
+      if (segs.length > cap) {
+        var keep = segs.filter(function (s) { return s.name !== 'その他'; }).slice(0, cap - 1);
+        var rem = segs.filter(function (s) { return keep.indexOf(s) < 0; });
+        var add = function (f) { return rem.every(function (s) { return s[f] != null; }) ? rem.reduce(function (a, s) { return a + s[f]; }, 0) : (f === 'profit' ? null : undefined); };
+        segs = keep.concat([{ name: 'その他', sales: add('sales'), salesPrev: add('salesPrev'), profit: add('profit'), profitPrev: add('profitPrev') }]);
+        note = 'その他には小さいセグメント（' + rem.filter(function (s) { return s.name !== 'その他'; }).map(function (s) { return s.name; }).join('、') + '）を含む';
+      }
+      if (rest > c.rev * 0.001) {
+        var sumP = Object.keys(sp).reduce(function (a, k) { return a + (sp[k] > 0 ? sp[k] : 0); }, 0);
+        segs.push({ name: '調整額など', sales: rest, salesPrev: p.rev !== undefined && sumP ? p.rev - sumP : undefined, profit: null });
+      }
+      if (segs.some(function (s) { return s.profit !== null; })) note = (note ? note + '。' : '') + 'セグメントの利益率はセグメント利益ベース（全社費用などの調整前）';
+      return { segs: segs, note: note };
+    }
+    // 単一セグメント：事業の名前と、製品別などの表を探す
+    var text = '', html = '';
+    segFiles(files).forEach(function (n) { html += files[n]; });
+    text = html.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/&#160;|&nbsp;/g, ' ').replace(/\s+/g, '');
+    var biz = (text.match(/[「『]?([^、。「」『』（）]{2,20}?)[」』]?の単一(の)?(事業)?セグメント/) || text.match(/セグメントは[「『]?([^、。「」『』]{2,20}?)[」』]?(単一|のみ)/) || [])[1];
+    if (biz) biz = biz.replace(/^(当社グループ|当社|当グループ)(は|の)?/, '').replace(/^.*(は|、)/, '').replace(/のみ$/, '');
+    var tb = tableBreakdown(html, c.rev, p.rev, T.unit);
+    if (tb) {
+      tb.items.forEach(function (it) { it.profit = null; });
+      return { segs: tb.items, note: '単一セグメント' + (biz ? '（' + biz + '）' : '') + 'のため、' + (tb.title || '製品・サービス別') + 'の売上を表示' };
+    }
+    return { segs: [{ name: biz || '単一セグメント', sales: c.rev, salesPrev: p.rev, profit: null, single: true }],
+      note: '単一セグメント' + (biz ? '（' + biz + '）' : '') + 'のため、売上の内訳は開示なし' };
+  }
+
+  // タグのない表から内訳を読む：「合計」の行が売上高と一致する表だけを使う
+  function tableBreakdown(html, rev, revPrev, unit) {
+    if (!html || !rev) return null;
+    var txt = function (s) { return s.replace(/<[^>]+>/g, '').replace(/&#160;|&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim(); };
+    var num = function (s) { var t = s.replace(/[,，\s]/g, '').replace(/^△|^▲|^-|^－/, '-'); return /^-?\d+(\.\d+)?$/.test(t) ? parseFloat(t) : null; };
+    var tables = html.split(/<table/i).slice(1), before = html.split(/<table/i);
+    for (var ti = 0; ti < tables.length; ti++) {
+      var tHtml = tables[ti].split(/<\/table>/i)[0];
+      var pre = txt(before.slice(0, ti + 1).join(' ').slice(-1500));
+      var mul = /単位[:：]\s*千円/.test(pre + txt(tHtml).slice(0, 80)) ? 1e3 : /単位[:：]\s*円/.test(pre) ? 1 : /単位[:：]\s*億円/.test(pre) ? 1e8 : 1e6;
+      var rows = tHtml.split(/<tr/i).slice(1).map(function (r) {
+        var cells = r.split(/<t[dh]/i).slice(1).map(function (x) { return txt('<' + x); });
+        cells = cells.filter(function (x) { return x !== ''; });
+        return { label: cells[0] || '', nums: cells.slice(1).map(num).filter(function (v) { return v !== null; }) };
+      });
+      var tot = -1, col = null;
+      rows.forEach(function (r, i) {
+        if (tot >= 0 || !/^(合計|計|売上(高|収益)合計|外部顧客への売上(高|収益))$/.test(r.label.replace(/\s/g, ''))) return;
+        r.nums.forEach(function (v, j) { if (col === null && Math.abs(v * mul - rev) <= Math.max(rev * 0.002, mul)) { tot = i; col = j - r.nums.length; } });
+      });
+      if (tot < 0) continue;
+      var colP = null, tr = rows[tot];
+      if (revPrev) tr.nums.forEach(function (v, j) { if (j - tr.nums.length !== col && Math.abs(v * mul - revPrev) <= Math.max(revPrev * 0.002, mul)) colP = j - tr.nums.length; });
+      var items = [];
+      for (var i = 0; i < tot; i++) {
+        var r = rows[i]; if (!r.label || r.nums.length < tr.nums.length) continue;
+        var v = r.nums[r.nums.length + col]; if (!(v > 0)) continue;
+        items.push({ name: r.label, sales: v * mul, salesPrev: colP === null ? undefined : r.nums[r.nums.length + colP] * mul });
+      }
+      var s = items.reduce(function (a, b) { return a + b.sales; }, 0);
+      if (items.length < 2 || Math.abs(s - rev) > Math.max(rev * 0.002, mul * items.length)) continue;
+      var title = (pre.match(/[（(]\d[）)]\s*([^（(）)]{2,24}?)に関する情報[^（(]*$/) || [])[1];
+      title = title ? title.replace(/及び/, '・') + '別' : null;
+      if (title) title = title.replace(/^製品・サービス別$/, '製品・サービス別');
+      items.sort(function (a, b) { return b.sales - a.sales; });
+      return { items: items, title: title };
+    }
+    return null;
+  }
+
   /* ---------- 損益：sk.js の CONFIG と同じ形に組み立てる ---------- */
   function extractPL(files, DP, meta) {
     var m = TP.analyze(files, DP);
@@ -83,24 +207,8 @@
     }
 
     // セグメント（外部顧客への売上と、あれば利益）
-    var EXT = ['RevenuesFromExternalCustomers', 'RevenueFromExternalCustomersIFRS'];
-    var PROF = ['OperatingIncome', 'OperatingProfitLossIFRS', 'SegmentProfitLoss', 'SegmentProfitLossIFRS', 'OrdinaryIncome'];
-    var sc = T.byMember(EXT, cur), sp = pri ? T.byMember(EXT, pri) : {}, pc = T.byMember(PROF, cur), pp = pri ? T.byMember(PROF, pri) : {};
-    var segs = Object.keys(sc).filter(function (k) { return !SEG_SKIP.test(k) && sc[k] > 0; }).map(function (k) {
-      var lbl = T.data.memberLabels[k] || (/OperatingSegmentsNotIncluded/.test(k) ? 'その他' : k.replace(/(ReportableSegments?)?Member$/, ''));
-      lbl = lbl.replace(/セグメント$/, '');
-      return { name: lbl, sales: sc[k], salesPrev: sp[k], profit: pc[k] !== undefined ? pc[k] : null, profitPrev: pp[k] };
-    });
-    segs.sort(function (a, b) { return b.sales - a.sales; });
-    var segSum = segs.reduce(function (a, b) { return a + b.sales; }, 0), segNote = null;
-    if (segs.length < 2 || segSum > c.rev * 1.001 || segSum < c.rev * 0.5) {
-      segs = [{ name: '単一セグメント', sales: c.rev, salesPrev: p.rev, profit: null, single: true }];
-      segNote = '単一セグメントのため、売上の内訳は開示なし';
-    } else {
-      var rest = c.rev - segSum;
-      if (rest > c.rev * 0.001) segs.push({ name: '調整額など', sales: rest, salesPrev: p.rev !== undefined ? p.rev - Object.keys(sp).filter(function (k) { return !SEG_SKIP.test(k); }).reduce(function (a, k) { return a + sp[k]; }, 0) : undefined, profit: null });
-      if (segs.some(function (s) { return s.profit !== null; })) segNote = 'セグメントの利益率はセグメント利益ベース（全社費用などの調整前）';
-    }
+    var sg = segmentsOf(T, files, cur, pri, c, p);
+    var segs = sg.segs, segNote = sg.note;
 
     var ifrsNote = null;
     if (ifrs) {
@@ -421,12 +529,20 @@
     var XS = 310, XR = 600, XG = 880, XO = 1150, XF = 1420;
     var rT = 300, rB = rT + P.rev * k;
     // セグメント
+    // 注記と出典は左下の枠（売上原価のラベルにかからない幅）に、下から積む
+    var wrapN = function (t, n) { var o = []; for (var i = 0; i < t.length; i += n) o.push(t.slice(i, i + n)); return o; };
+    var footL = [];
+    [cfg.ifrsNote, cfg.segNote].filter(Boolean).forEach(function (t) { wrapN(t, 48).forEach(function (x) { footL.push([x, 15]); }); });
+    wrapN('単位：' + U.name + '｜出典：' + cfg.source, 50).forEach(function (x) { footL.push([x, 15]); });
     var segSum = segs.reduce(function (a, b) { return a + b.sales; }, 0) || 1;
     var gapS = segs.length > 1 ? Math.min(120, (560 - P.rev * k) / (segs.length - 1)) : 0;
     var sy = segs.length > 1 ? 160 : rT, cut = rT;
     if (segs.length > 2) {
-      var MINH = 86, hs = segs.map(function (sg) { return sg.sales / segSum * P.rev * k; }), slots = hs.map(function (h) { return Math.max(h, MINH); });
-      var g = Math.max(10, Math.min(60, (540 - slots.reduce(function (a, b) { return a + b; }, 0)) / (segs.length - 1)));
+      // 注記にかからない高さに収める
+      var segBottom = 880 - footL.length * 19 - 12, avail = Math.min(660, segBottom - 120);
+      var MINH = Math.max(64, Math.min(86, (avail - 10 * (segs.length - 1)) / segs.length));
+      var hs = segs.map(function (sg) { return sg.sales / segSum * P.rev * k; }), slots = hs.map(function (h) { return Math.max(h, MINH); });
+      var g = Math.max(6, Math.min(60, (Math.min(540, avail) - slots.reduce(function (a, b) { return a + b; }, 0)) / (segs.length - 1)));
       var y = 120;
       segs.forEach(function (sg, i) {
         var h = hs[i], ny = y + (slots[i] - h) / 2;
@@ -434,7 +550,7 @@
         var pr = sg.profit == null ? '売上の' + (sg.sales / segSum * 100).toFixed(1) + '%' :
           '利益率 ' + rts(sg.profit, sg.sales) + '%' + (has(sg.profitPrev) && has(sg.salesPrev) ? '（' + pp(rt(sg.profit, sg.sales), rt(sg.profitPrev, sg.salesPrev)).replace(' 前年比', '') + '）' : '');
         var yy = yoy(sg.sales, sg.salesPrev);
-        lines(XS - 20, y + slots[i] / 2 - 42, [[sg.name, 26, 900], [fmt(sg.sales) + (yy ? '　' + yy : ''), 19, 700], [pr, 17, 500, M]], 'end');
+        lines(XS - 20, y + slots[i] / 2 - 42, [[sg.name, Math.min(26, Math.floor(300 / Math.max(1, sg.name.length))), 900], [fmt(sg.sales) + (yy ? '　' + yy : ''), 19, 700], [pr, 17, 500, M]], 'end');
         cut += h; y += slots[i] + g;
       });
     } else segs.forEach(function (sg) {
@@ -446,11 +562,6 @@
       lines(XS - 24, sy + 4, [[sg.name, sg.name.length > 8 ? 26 : 34, 900]].concat(info), 'end');
       cut += h; sy += h + gapS;
     });
-    // 注記と出典は左下の枠（売上原価のラベルにかからない幅）に、下から積む
-    var wrapN = function (t, n) { var o = []; for (var i = 0; i < t.length; i += n) o.push(t.slice(i, i + n)); return o; };
-    var footL = [];
-    [cfg.ifrsNote, cfg.segNote].filter(Boolean).forEach(function (t) { wrapN(t, 48).forEach(function (x) { footL.push([x, 15]); }); });
-    wrapN('単位：' + U.name + '｜出典：' + cfg.source, 50).forEach(function (x) { footL.push([x, 15]); });
     footL.forEach(function (a, i) { var pn = T(20, 880 - (footL.length - 1 - i) * 19); B.text(pn[0], pn[1], a[0], { size: a[1], fill: M, anchor: 'start' }); });
     node(XR, rT, rB - rT, PAL.rev);
     lines(XR + NW / 2, rT - 128, [['売上高', 32, 900], [fmt(P.rev), 32, 700], [yoy(P.rev, Pp.rev), 19, 500, M]]);
