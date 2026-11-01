@@ -194,7 +194,7 @@
       var k = kids(c);
       var name = ln(c);
       // 日本基準：有形・無形固定資産は合計のまま、投資その他の資産は中身に分ける
-      var keep = /^(PropertyPlantAndEquipment|IntangibleAssets|IntangibleAssetsIFRS|PropertyPlantAndEquipmentIFRS)$/.test(name);
+      var keep = /^(PropertyPlantAndEquipment|IntangibleAssets)(?!Gross|Net)/.test(name);
       if (!k.length || keep) { leaves.push({ c: c, s: sign, p: walk.parent }); return; }
       var saved = walk.parent; walk.parent = c;
       k.forEach(function (x) { walk(x.c, sign * x.w, depth + 1); });
@@ -208,12 +208,20 @@
     // 引当金は、同じ区分に破産更生債権などがあればそこから差し引き、なければ「その他」に含める（雛形どおり）
     leaves.forEach(function (l) {
       if (l.val === undefined || l.val >= 0) return;
+      var nm0 = ln(l.c);
+      if (/AccumulatedDepreciation|AccumulatedImpairment/.test(nm0)) {
+        var idx = leaves.indexOf(l), prev = null;
+        for (var pi = idx - 1; pi >= 0; pi--) if (leaves[pi].val > 0 && leaves[pi].p === l.p) { prev = leaves[pi]; break; }
+        if (prev) { prev.val += l.val; if (prev.pv !== undefined && l.pv !== undefined) prev.pv += l.pv; l.val = undefined; }
+        return;
+      }
       // 引当金の相手：同じ区分の債権。破産更生債権→売掛金・貸付金・立替金→保証金の順に、大きいものから差し引く
       var rank = function (x) {
         var n = ln(x.c), lb = labelOf[x.c] || '';
         if (/^Cash|現金/.test(n + lb)) return -1;
         if (/ClaimsProvable|Bankruptcy|破産更生/.test(n + lb)) return 3;
         if (/Receivable|Loans|Advance|売掛|貸付|立替|未収/.test(n + lb)) return 2;
+        if (/InvestmentLoss/.test(nm0) && /InvestmentSecurities|投資有価証券/.test(n + lb)) return 2;
         if (/Guarantee|保証金|差入/.test(n + lb)) return 1;
         return 0;
       };
@@ -233,13 +241,14 @@
       var pv = l.pv;
       var base = ln(l.c).replace(/(CA|NCA|IOA)?(IFRS)?$/, '').replace(/(CA|NCA|IOA)$/, '');
       var lab = (labelOf[l.c] || base).replace(/[\s　]+/g, '').replace(/合計$/, '');
-      var key = ifrs ? base : l.c;
+      var key = ifrs ? base : (lab || l.c);
       // 日本基準で棚卸資産が品目ごとに分かれている場合は、まとめて「棚卸資産」にする
       if (/^(Merchandise|FinishedGoods|MerchandiseAndFinishedGoods|WorkInProcess|RawMaterials|Supplies|RawMaterialsAndSupplies|CostsOnUncompletedConstructionContracts|RealEstateForSale|Inventories)$/.test(base)) { key = '__INV'; lab = '棚卸資産'; }
       var g = groups[key] = groups[key] || { label: lab, v: 0, pv: 0, n: 0, havePrior: true, concepts: [], inv: key === '__INV', netted: false, ord: 1e9 };
       g.ord = Math.min(g.ord, orderOf[l.c] !== undefined ? orderOf[l.c] : 1e9);
       g.v += val; g.pv += (pv || 0); g.n++; g.concepts.push((labelOf[l.c] || base).replace(/[\s　]+/g, ''));
       if (l.netted) g.netted = true;
+      (g.parents = g.parents || []).push(ln(l.p || ''));
       if (pv === undefined) g.havePrior = false;
     });
     var total = v(['Assets', 'AssetsIFRS']), totalP = pri ? v(['Assets', 'AssetsIFRS'], pri) : undefined;
@@ -251,15 +260,18 @@
     var notes = [];
     shown.forEach(function (g) {
       if (g.inv && g.n > 1) notes.push('棚卸資産は' + g.concepts.join('・') + 'の合計');
-      else if (g.n > 1) notes.push(g.label + 'は流動＋非流動の合計');
-      if (g.netted) notes.push(g.label + 'は貸倒引当金を差し引き後');
+      else if (g.n > 1) {
+        var cur = g.parents.some(function (p) { return /^Current/.test(p); }), non = g.parents.some(function (p) { return !/^Current/.test(p); });
+        notes.push(g.label + 'は' + (cur && non ? (ifrs ? '流動＋非流動' : '流動＋固定') : '複数の区分') + 'の合計');
+      }
+      if (g.netted) notes.push(g.label + 'は引当金を差し引き後');
     });
     if (otherSum > 0) {
       assets.push({ label: ifrs ? 'その他の資産' : 'その他', v: otherSum });
       var parts = others.filter(function (g) { return g.v > 0 && g.label !== 'その他'; }).sort(function (a, b) { return b.v - a.v; }).map(function (g) { return g.label.replace(/^その他の?/, 'その他'); });
       var uniq = parts.filter(function (x, i) { return parts.indexOf(x) === i; });
       var neg = others.some(function (g) { return g.v < 0 || g.netted; });
-      notes.push((ifrs ? 'その他の資産' : 'その他') + 'は' + uniq.slice(0, 6).join('・') + (uniq.length > 6 || others.some(function (g) { return g.label === 'その他'; }) ? 'など' : '') + 'の合計' + (neg ? '（貸倒引当金を差し引き後）' : ''));
+      notes.push((ifrs ? 'その他の資産' : 'その他') + 'は' + uniq.slice(0, 6).join('・') + (uniq.length > 6 || others.some(function (g) { return g.label === 'その他'; }) ? 'など' : '') + 'の合計' + (neg ? '（引当金などを差し引き後）' : ''));
     }
 
     // 負債
