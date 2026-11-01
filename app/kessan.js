@@ -544,7 +544,8 @@
     // 注記と出典は左下の枠（売上原価のラベルにかからない幅）に、下から積む
     var wrapN = function (t, n) { var o = []; for (var i = 0; i < t.length; i += n) o.push(t.slice(i, i + n)); return o; };
     var footL = [];
-    [cfg.ifrsNote, cfg.segNote].filter(Boolean).forEach(function (t) { wrapN(t, 48).forEach(function (x) { footL.push([x, 15]); }); });
+    // 長い注記は載せない（図をすっきり見せる）。営業利益を計算で出したときだけ、ひとこと添える
+    if (P.opDerived) footL.push(['営業利益は開示がないため、税引前利益から金融損益等を除いて算出', 15]);
     var srcDate = splitDate(cfg.source);
     wrapN('単位：' + U.name + '｜出典：' + srcDate.src, 50).forEach(function (x) { footL.push([x, 15]); });
     var segSum = segs.reduce(function (a, b) { return a + b.sales; }, 0) || 1;
@@ -708,7 +709,7 @@
 
   function renderBS(cfg, opt) {
     var noteLines = [];
-    var nt = (cfg.notes || []).join('。');
+    var nt = ''; // 長い注記は載せない（図をすっきり見せる）
     for (var ni = 0; ni < nt.length; ni += 104) noteLines.push(nt.slice(ni, ni + 104)); // 右下の開示日にかからない幅
     var EXT = Math.max(0, noteLines.length - 2) * 22;
     var W = 2000, H = 1160 + EXT, B = svgBuilder(W, H), U = cfg.unit;
