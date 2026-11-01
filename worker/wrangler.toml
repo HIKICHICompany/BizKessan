@@ -1,0 +1,10 @@
+name = "bizkessan"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+# 画面と数字は site/ にまとめて置く（公開の前に build.sh が作る）
+[assets]
+directory = "./site"
+binding = "ASSETS"
+run_worker_first = true
+not_found_handling = "none"

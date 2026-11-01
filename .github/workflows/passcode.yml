@@ -1,0 +1,30 @@
+name: 合言葉のお知らせ（毎月25日に来月分）
+
+on:
+  schedule:
+    # 毎月25日 日本時間 9:23
+    - cron: '23 0 25 * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 合言葉を作ってお知らせする
+        env:
+          PASS_SECRET: ${{ secrets.PASS_SECRET }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event.repository.private }}" != "true" ]; then echo "リポジトリが公開のままなので、合言葉は出しません（非公開にしてから使います）"; exit 1; fi
+          if [ -z "$PASS_SECRET" ]; then echo "PASS_SECRET がまだありません"; exit 1; fi
+          THIS=$(TZ=Asia/Tokyo date +%Y-%m)
+          NEXT=$(TZ=Asia/Tokyo date -d "$(TZ=Asia/Tokyo date +%Y-%m-01) +1 month" +%Y-%m)
+          C_THIS=$(node pipeline/passcode.js "$THIS")
+          C_NEXT=$(node pipeline/passcode.js "$NEXT")
+          M_NEXT=$((10#${NEXT#*-}))
+          BODY=$(printf '来月（%s）の合言葉：**%s**\n%s月1日 0時に切り替わります。noteのメンバー限定記事に載せてください。\n切り替えから7日間は、今月の合言葉も使えます。\n\n今月（%s）の合言葉：%s' "$NEXT" "$C_NEXT" "$M_NEXT" "$THIS" "$C_THIS")
+          gh issue create --title "美図決算 ${M_NEXT}月の合言葉" --body "$BODY" --assignee HIKICHICompany || gh issue create --title "美図決算 ${M_NEXT}月の合言葉" --body "$BODY"

@@ -1,15 +1,65 @@
 (function () {
   'use strict';
 
-  // 数字の置き場所（GitHub）。開発中は window.BIZ_DATA_BASE で差し替える
-  var DATA = window.BIZ_DATA_BASE || 'https://raw.githubusercontent.com/HIKICHICompany/BizKessan/main/data/';
+  // 数字の置き場所：ウェブ版は同じ場所の /data/、Androidアプリは公開先のアドレスから読む
+  var API = window.BIZ_API || (location.hostname === 'appassets.androidplatform.net' ? 'https://bizkessan.hikichi.workers.dev' : '');
+  var DATA = API + '/data/';
+  var MEMBER_URL = 'https://note.com/hikichi_company/membership';
   var $ = function (id) { return document.getElementById(id); };
   var companies = [], index = {}, market = { seg: {}, n225: [] }, n225 = {};
 
   /* ---------- 読み込み ---------- */
   function getJSON(url) {
-    return fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 't=' + Math.floor(Date.now() / 6e5), { cache: 'no-store' })
-      .then(function (r) { if (r.status === 404) return null; if (!r.ok) throw new Error('通信 ' + r.status); return r.json(); });
+    var pass = load('pass', null), h = {};
+    if (pass && pass.token) h['X-Biz-Token'] = pass.token;
+    return fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 't=' + Math.floor(Date.now() / 6e5), { cache: 'no-store', headers: h })
+      .then(function (r) {
+        if (r.status === 404) return null;
+        if (r.status === 401) return { locked: true };
+        if (!r.ok) throw new Error('通信 ' + r.status);
+        return r.json();
+      });
+  }
+
+  /* ---------- 合言葉（noteメンバーシップの特典） ---------- */
+  function thisMonth() { return new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 7); }
+  function isMember() { var p = load('pass', null); return !!(p && p.token && p.month === thisMonth()); }
+  function isFree(code) { return !!n225[code]; }
+  function login(code) {
+    return fetch(API + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, msg: '通信 ' + r.status }; }); })
+      .then(function (j) { if (j.ok) store('pass', { token: j.token, month: j.month }); return j; });
+  }
+  function passState() {
+    var el = $('passState'); if (!el) return;
+    var p = load('pass', null);
+    el.textContent = isMember()
+      ? 'メンバーとして全社を見られます（' + (+p.month.slice(5)) + '月の合言葉）。合言葉は毎月1日に替わります。'
+      : '日経225の会社は誰でも見られます。それ以外の会社は、noteメンバーシップの特典です。合言葉は毎月1日に替わります。';
+  }
+  function wirePass(inputEl, btn, msgEl, done) {
+    function go() {
+      var v = inputEl.value.trim(); if (!v) { inputEl.focus(); return; }
+      btn.disabled = true; msgEl.className = 'passmsg'; msgEl.textContent = '確かめています…';
+      login(v).then(function (j) {
+        btn.disabled = false;
+        if (j.ok) { msgEl.className = 'passmsg ok'; msgEl.textContent = 'ありがとうございます。全社を見られるようになりました。'; passState(); drawRows(); if (done) done(); }
+        else { msgEl.className = 'passmsg err'; msgEl.textContent = j.msg || '合言葉がちがいます'; }
+      }).catch(function () { btn.disabled = false; msgEl.className = 'passmsg err'; msgEl.textContent = 'つながりませんでした。電波の状態を確かめて、もう一度お試しください。'; });
+    }
+    btn.addEventListener('click', go);
+    inputEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+  }
+  function lockPanel(it) {
+    var d = document.createElement('section'); d.className = 'lock';
+    var expired = load('pass', null) && !isMember();
+    d.innerHTML = '<h2></h2><p></p><div class="passrow"><input type="text" inputmode="latin" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="合言葉" aria-label="合言葉"><button type="button" class="btn primary">見る</button></div>' +
+      '<p class="passmsg" role="status" aria-live="polite"></p><p>合言葉は、<a target="_blank" rel="noopener">noteメンバーシップ</a>の限定記事でお知らせしています。日経225の会社は、合言葉なしで見られます。</p>';
+    d.querySelector('h2').textContent = it.name + 'はメンバー特典です';
+    d.querySelector('p').textContent = expired ? '月が替わり、合言葉が新しくなりました。今月の合言葉を入れてください。' : '合言葉を入れると、この会社の図を見られます。一度入れれば、その月の間は聞きません。';
+    d.querySelector('a').href = MEMBER_URL;
+    wirePass(d.querySelector('input'), d.querySelector('button'), d.querySelector('.passmsg'), function () { open(it); });
+    return d;
   }
   function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 保存できなくても動く */ } }
   function load(k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
@@ -84,6 +134,7 @@
     $('main').innerHTML = ''; $('more').hidden = true; $('extra').innerHTML = '';
     status(it.name + 'の決算を読み込んでいます…');
     getJSON(DATA + 'companies/' + it.code + '.json').then(function (co) {
+      if (co && co.locked) { status(''); $('main').appendChild(lockPanel(it)); return; }
       if (!co || !co.docs || !co.docs.length) {
         status(it.name + 'の決算データはまだありません。決算短信が出た銘柄から順に、毎日夜に追加されます。', true);
         return;
@@ -236,10 +287,31 @@
         if (r) toast(r, /できません/.test(r)); else document.getElementById('toast').hidden = true;
         return;
       }
-      var a = document.createElement('a'); a.href = 'data:image/png;base64,' + b64; a.download = f.file; document.body.appendChild(a); a.click(); a.remove();
-      toast('保存しました（' + f.file + '）');
+      // iPhoneなど：共有の画面を開く（「画像を保存」で写真に入る。XやLINEにもそのまま送れる）
+      var file = null;
+      try {
+        var bin = atob(b64), u8 = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        file = new File([u8], f.file, { type: 'image/png' });
+      } catch (e) { file = null; }
+      if (file && navigator.canShare && navigator.canShare({ files: [file] }) && (act === 'share' || isTouch())) {
+        $('toast').hidden = true;
+        navigator.share({ files: [file] }).then(function () {
+          if (act === 'save') toast('共有の画面で「画像を保存」を選ぶと、写真に入ります');
+        }).catch(function (e) { if (e && e.name !== 'AbortError') fallback(); });
+        return;
+      }
+      fallback();
+      function fallback() {
+        var a = document.createElement('a'); a.href = URL.createObjectURL(file || new Blob([])); a.download = f.file;
+        if (!file) a.href = 'data:image/png;base64,' + b64;
+        document.body.appendChild(a); a.click(); a.remove();
+        toast(act === 'share' ? 'この端末では共有の画面を開けないため、画像を保存しました（' + f.file + '）' : '保存しました（' + f.file + '）');
+      }
     }).catch(function (e) { toast(e.message, true); });
   }
+
+  function isTouch() { return 'ontouchstart' in window || navigator.maxTouchPoints > 0; }
 
   /* ---------- お気に入り ---------- */
   function favs() { return load('fav', []); }
@@ -290,6 +362,7 @@
   function drawRows() {
     var all = rowsAll(); drawMonths(all);
     var fv = {}; favs().forEach(function (x) { fv[x.code] = 1; });
+    var member = isMember();
     var rows = all.filter(function (r) {
       if (r.disclosed.slice(0, 6) !== month) return false;
       if (filt === 'n225') return n225[r.code];
@@ -312,7 +385,7 @@
       b.innerHTML = '<span class="rt"><span class="rn"></span><span class="rc"></span></span><span class="rb"></span><span class="rp"></span>';
       b.querySelector('.rn').textContent = (fv[r.code] ? '★ ' : '') + r.name;
       b.querySelector('.rc').textContent = r.code;
-      b.querySelector('.rb').innerHTML = (n225[r.code] ? '<i class="tg n">225</i>' : '') + (seg ? '<i class="tg s' + seg + '">' + SEGN[seg] + '</i>' : '');
+      b.querySelector('.rb').innerHTML = (n225[r.code] ? '<i class="tg n">225</i>' : '') + (seg ? '<i class="tg s' + seg + '">' + SEGN[seg] + '</i>' : '') + (!member && !n225[r.code] ? '<i class="tg m">メンバー</i>' : '');
       b.querySelector('.rp').textContent = Kessan.periodLabel(r.fye, r.q) || r.label;
       b.addEventListener('click', function () { open({ code: r.code, name: r.name }); });
       li.appendChild(b); ul.appendChild(li);
@@ -339,4 +412,5 @@
   ]).catch(function () { status('一覧を更新できませんでした。前回読み込んだ内容を表示しています。', true); })
     .then(function () { if (!$('browse').hidden) drawRows(); });
   drawRecent(); drawFavs();
+  passState(); wirePass($('passSet'), $('passSetBtn'), $('passSetMsg'));
 })();

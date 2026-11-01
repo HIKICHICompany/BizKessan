@@ -54,3 +54,9 @@ jobs:
             git pull --rebase -X theirs origin main
             git push
           fi
+
+  # 取り込んだ数字を公開先（Cloudflare）にも反映する
+  publish:
+    needs: fetch
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit

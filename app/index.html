@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>美図決算 β</title>
+<meta name="theme-color" content="#2B3A67">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="美図決算">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
 <style>
   :root {
     --bg: #F4F6F8; --paper: #FFFFFF; --ink: #1D2433; --sub: #5D6678; --faint: #8A92A0;
@@ -103,6 +109,19 @@
   .toast { position: fixed; left: 16px; right: 16px; bottom: max(18px, env(safe-area-inset-bottom)); z-index: 20; background: var(--ink); color: #fff; padding: 12px 16px; border-radius: 10px; font-size: 14px; line-height: 1.6; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
   .toast[hidden] { display: none; }
   .toast.err { background: var(--red); }
+  .lock { background: var(--paper); border: 1.5px solid var(--navy); border-radius: 12px; padding: 18px; margin-top: 6px; }
+  .lock h2 { font-size: 17px; margin: 0 0 6px; }
+  .lock p { font-size: 14px; color: var(--sub); line-height: 1.7; margin: 0 0 12px; }
+  .passrow { display: flex; gap: 8px; flex-wrap: wrap; }
+  .passrow input { font: inherit; font-size: 18px; letter-spacing: .12em; text-transform: uppercase; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 8px; width: 9em; max-width: 100%; }
+  .passrow input:focus { outline: 3px solid var(--navy-soft); border-color: var(--navy); }
+  .passmsg { font-size: 13px; margin: 8px 0 0 !important; min-height: 1.2em; }
+  .passmsg.err { color: var(--red) !important; }
+  .passmsg.ok { color: var(--green) !important; }
+  .lock a { color: var(--navy); font-weight: 700; }
+  .tg.m { background: #F1ECF8; color: #6B4F9A; }
+  .settings h2 + p + .passrow, .settings .passrow { margin-bottom: 4px; }
+  .settings .sec + .sec { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
   footer { margin: 30px 2px 0; font-size: 12px; color: var(--faint); line-height: 1.8; }
 </style>
 </head>
@@ -113,12 +132,20 @@
       <h1><ruby>美図<rt>ビジュ</rt></ruby>決算<span class="beta">β</span></h1>
       <p class="tag">儲けは、川の流れのように</p>
     </div>
-    <button type="button" id="setBtn" class="btn" aria-expanded="false" aria-controls="settings">配色</button>
+    <button type="button" id="setBtn" class="btn" aria-expanded="false" aria-controls="settings">設定</button>
   </header>
   <section id="settings" class="settings" hidden>
-    <h2>配色を選ぶ</h2>
-    <p>左から 資産・収益／負債・費用／資本・利益 の色です。共有や保存する画像にも反映されます。</p>
-    <div id="themeList" role="radiogroup" aria-label="配色"></div>
+    <div class="sec">
+      <h2>メンバーの合言葉</h2>
+      <p id="passState">日経225の会社は誰でも見られます。それ以外の会社は、noteメンバーシップの特典です。合言葉は毎月1日に替わります。</p>
+      <div class="passrow"><input id="passSet" type="text" inputmode="latin" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="合言葉" aria-label="合言葉"><button type="button" id="passSetBtn" class="btn primary">入れる</button></div>
+      <p class="passmsg" id="passSetMsg" role="status" aria-live="polite"></p>
+    </div>
+    <div class="sec">
+      <h2>配色を選ぶ</h2>
+      <p>左から 資産・収益／負債・費用／資本・利益 の色です。共有や保存する画像にも反映されます。</p>
+      <div id="themeList" role="radiogroup" aria-label="配色"></div>
+    </div>
   </section>
 
   <div class="search" role="search">
