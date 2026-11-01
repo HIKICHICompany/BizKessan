@@ -551,13 +551,25 @@
     // 長い注記は載せない（図をすっきり見せる）。営業利益を計算で出したときだけ、ひとこと添える
     if (P.opDerived) footL.push(['営業利益は開示がないため、税引前利益から金融損益等を除いて算出', 15]);
     var srcDate = splitDate(cfg.source);
-    wrapN('単位：' + U.name + '｜出典：' + srcDate.src, 50).forEach(function (x) { footL.push([x, 15]); });
+    // 言葉の途中で切れないよう、空白やかっこの前で折り返す
+    var wrapSoft = function (t, n) {
+      var o = [];
+      while (t.length > n) {
+        var cut = -1;
+        for (var i = n; i > n * 0.5; i--) { if (/[\s　（〔(\[]/.test(t.charAt(i))) { cut = i; break; } }
+        if (cut < 0) cut = n;
+        o.push(t.slice(0, cut).replace(/[\s　]+$/, '')); t = t.slice(cut).replace(/^[\s　]+/, '');
+      }
+      if (t) o.push(t); return o;
+    };
+    footL.push(['単位：' + U.name, 15]);
+    wrapSoft('出典：' + srcDate.src, 44).forEach(function (x) { footL.push([x, 15]); });
     var segSum = segs.reduce(function (a, b) { return a + b.sales; }, 0) || 1;
     var gapS = segs.length > 1 ? Math.min(120, (560 - P.rev * k) / (segs.length - 1)) : 0;
     var sy = segs.length > 1 ? 160 : rT, cut = rT;
     if (segs.length >= 2) {
       // 注記にかからない高さの中で、セグメントを上下にバランスよく広げ、売上高の箱を中心にそろえる
-      var segTop = 130, segBottom = Math.min(800, 880 - footL.length * 19 - 12), avail = segBottom - segTop;
+      var segTop = 130, segBottom = 800, avail = segBottom - segTop;
       var MINH = Math.max(64, Math.min(86, (avail - 10 * (segs.length - 1)) / segs.length));
       var hs = segs.map(function (sg) { return sg.sales / segSum * P.rev * k; }), slots = hs.map(function (h) { return Math.max(h, MINH); });
       var slotSum = slots.reduce(function (a, b) { return a + b; }, 0);
@@ -664,10 +676,12 @@
     // 下の欄：左に出典と「美図決算：…」（題名と同じ大きさ）、右に開示日・©・note
     var baseY = Hh - 26, xL = OX + 20, xR = OX + 1700;
     B.text(xL, baseY, '美図決算：絵でみる経営成績', { size: TTL_SIZE, weight: 900, fill: PAL.rev, anchor: 'start' });
-    footL.forEach(function (a, i) { B.text(xL, baseY - TTL_SIZE - 12 - (footL.length - 1 - i) * 19, a[0], { size: a[1], fill: M, anchor: 'start' }); });
     B.text(xR, baseY, NOTE_URL, { size: 16, fill: M, anchor: 'end' });
     B.text(xR, baseY - 24, '©HIKICHI＆Company', { size: 18, weight: 700, fill: M, anchor: 'end' });
     if (srcDate.date) B.text(xR, baseY - 50, srcDate.date, { size: 16, fill: M, anchor: 'end' });
+    // 注記と単位・出典は右下（日付の上）に、下から積む
+    var fTop = baseY - (srcDate.date ? 76 : 50);
+    footL.forEach(function (a, i) { B.text(xR, fTop - (footL.length - 1 - i) * 19, a[0], { size: a[1], fill: M, anchor: 'end' }); });
     return { svg: B.done(), width: W, height: Hh };
   }
 
@@ -800,10 +814,10 @@
     var srcDateB = splitDate(cfg.source);
     var bY = H - 28;
     B.text(40, bY, '美図決算：絵でみる財政状態', { size: TTLB_SIZE, weight: 900, fill: BSC.navy, anchor: 'start' });
-    B.text(40, bY - TTLB_SIZE - 12, '単位：' + U.name + '｜出典：' + srcDateB.src, { size: 16, fill: BSC.muted, anchor: 'start' });
     B.text(1960, bY, NOTE_URL, { size: 17, fill: BSC.muted, anchor: 'end' });
     B.text(1960, bY - 26, '©HIKICHI＆Company', { size: 19, weight: 700, fill: BSC.navy, anchor: 'end' });
     if (srcDateB.date) B.text(1960, bY - 54, srcDateB.date, { size: 17, fill: BSC.muted, anchor: 'end' });
+    B.text(1960, bY - (srcDateB.date ? 82 : 54), '単位：' + U.name + '｜出典：' + srcDateB.src, { size: 16, fill: BSC.muted, anchor: 'end' });
     return { svg: B.done(), width: W, height: H };
   }
 

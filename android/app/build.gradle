@@ -8,8 +8,8 @@ android {
         applicationId 'com.hikichi.bizkessan'
         minSdk 29
         targetSdk 35
-        versionCode 10
-        versionName '0.1.9-beta'
+        versionCode 11
+        versionName '0.1.10-beta'
     }
 
     signingConfigs {
