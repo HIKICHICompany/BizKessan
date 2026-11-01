@@ -542,7 +542,7 @@
     // 図の本体は少し小さくして、下に余白をつくる（題名と下の欄はそのままの大きさ）
     var SC = 0.9, scX = W / 2, scY = OY + 110;
     B.add('<g transform="translate(' + scX + ' ' + scY + ') scale(' + SC + ') translate(' + (-scX) + ' ' + (-scY) + ')">');
-    var XS = 310, XR = 600, XG = 880, XO = 1150, XF = 1420;
+    var XS = 300, XR = 615, XG = 915, XO = 1205, XF = 1490; // 横に少し広げる
     var rT = 300, rB = rT + P.rev * k;
     // セグメント
     // 注記と出典は左下の枠（売上原価のラベルにかからない幅）に、下から積む
@@ -631,7 +631,7 @@
         });
         var iy = nT;
         ins.forEach(function (a, i) {
-          var ix = 1290 + i * 88, iyy = 110, v = a[1]; // 2つあるときも、営業利益の見出しや互いに重ならない間隔
+          var ix = XO + NW + 96 + i * 88, iyy = 110, v = a[1]; // 2つあるときも、営業利益の見出しや互いに重ならない間隔
           ad('rect', { x: ix, y: iyy, width: 30, height: Math.max(v * k, 3), fill: PAL.op });
           flow(ix + 30, iyy, iyy + v * k, XF, iy, iy + v * k, PAL.gnflow); iy += v * k;
           lines(ix + 15, iyy - 52, [[a[0], ins.length > 1 ? 16 : 17, 700, GT], ['+' + fmt(v), ins.length > 1 ? 16 : 17, 700, GT]]);
@@ -646,7 +646,7 @@
       // 営業損失：売上総利益のすべてと、足りない分（営業損失）が販管費に流れる
       var sT2 = 300, sH2 = P.sga * k, lossH = -P.op * k;
       flow(XSRC + NW, gT, gT + gH, XO, sT2, sT2 + gH, PAL.sgaflow);
-      var lx = 1000, ly = 600;
+      var lx = XG + 120, ly = 600;
       ad('rect', { x: lx, y: ly, width: 26, height: Math.max(lossH, 3), fill: NEG });
       flow(lx + 26, ly, ly + lossH, XO, sT2 + gH, sT2 + sH2, PAL.negflow);
       lines(lx + 40, ly - 14, [['営業損失', 26, 900, NEG], ['(' + fmt(-P.op) + ')', 26, 700, NEG], ['利益率 ' + rts(P.op, P.rev) + '%', 17, 500, M], [has(Pp.op) && has(Pp.rev) ? '前期は ' + rts(Pp.op, Pp.rev) + '%' : '', 17, 500, M]], 'start');
@@ -678,9 +678,8 @@
     B.text(xL, baseY, '美図決算：絵でみる経営成績', { size: TTL_SIZE, weight: 900, fill: PAL.rev, anchor: 'start' });
     B.text(xR, baseY, NOTE_URL, { size: 16, fill: M, anchor: 'end' });
     B.text(xR, baseY - 24, '©HIKICHI＆Company', { size: 18, weight: 700, fill: M, anchor: 'end' });
-    if (srcDate.date) B.text(xR, baseY - 50, srcDate.date, { size: 16, fill: M, anchor: 'end' });
     // 注記と単位・出典は右下（日付の上）に、下から積む
-    var fTop = baseY - (srcDate.date ? 76 : 50);
+    var fTop = baseY - 24 - 58; // ©から2行ほど離す
     footL.forEach(function (a, i) { B.text(xR, fTop - (footL.length - 1 - i) * 19, a[0], { size: a[1], fill: M, anchor: 'end' }); });
     return { svg: B.done(), width: W, height: Hh };
   }
@@ -736,7 +735,7 @@
     var W = 2000, H = 1160 + EXT, B = svgBuilder(W, H), U = cfg.unit;
     var f = function (v) { return Math.round(v / U.div).toLocaleString('ja-JP'); };
     var pct = function (v) { return '総資産の' + (v / cfg.total * 100).toFixed(1) + '%'; };
-    var NW = 54, XL = 420, XRt = 1328, XC = (XL + XRt) / 2, /* 総資産の柱を真ん中に：左右の流れの横幅をそろえる */ SPAN = 546, k = SPAN / cfg.total;
+    var NW = 54, XL = 1000 - 640, XRt = 1000 + 640 - NW, XC = (XL + XRt) / 2, /* 総資産の柱を真ん中に：左右の流れの横幅をそろえる */ SPAN = 546, k = SPAN / cfg.total;
     function rect(x, y, h, c) { B.add('<rect x="' + x + '" y="' + y.toFixed(1) + '" width="' + NW + '" height="' + Math.max(h, 2).toFixed(1) + '" fill="' + c + '"/>'); }
     function band(x0, a0, b0, x1, a1, b1, c) {
       var m = (x0 + x1) / 2;
@@ -747,7 +746,7 @@
     B.text(W / 2, 92, ttlB, { size: TTLB_SIZE, weight: 900, fill: BSC.navy });
     // 図の本体は少し小さくして、下に余白をつくる
     var scXB = W / 2, scYB = 130;
-    B.add('<g transform="translate(' + scXB + ' ' + scYB + ') scale(0.9) translate(' + (-scXB) + ' ' + (-scYB) + ')">');
+    B.add('<g transform="translate(' + scXB + ' ' + (scYB + 40) + ') scale(0.9) translate(' + (-scXB) + ' ' + (-scYB) + ')">');
 
     // 中央：総資産
     var cT = 303, cB = cT + SPAN;
@@ -768,9 +767,9 @@
       rect(XL, y, h, BSC.asset);
       band(XL + NW, y, y + hv, XC, cut, cut + hv, BSC.aflow);
       var cy = Math.max(y + h / 2, lastCy + 74); lastCy = cy;
-      B.text(390, cy - 14, a.label, { size: 22, weight: 900, fill: BSC.navy, anchor: 'end' });
-      B.text(390, cy + 13, f(a.v), { size: 21, fill: BSC.navy, anchor: 'end' });
-      B.text(390, cy + 36, pct(a.v), { size: 16, fill: BSC.muted, anchor: 'end' });
+      B.text(XL - 30, cy - 14, a.label, { size: 22, weight: 900, fill: BSC.navy, anchor: 'end' });
+      B.text(XL - 30, cy + 13, f(a.v), { size: 21, fill: BSC.navy, anchor: 'end' });
+      B.text(XL - 30, cy + 36, pct(a.v), { size: 16, fill: BSC.muted, anchor: 'end' });
       cut += hv; y += h + gapL;
     });
 
@@ -787,13 +786,13 @@
       var tc = isL ? BSC.liabText : BSC.eqText, last = i === R.length - 1;
       if (false) {
         // いちばん下は、右下の箱と重ならないよう上に2行で書く
-        B.text(1410, ry - 74, r.label, { size: 22, weight: 900, fill: tc, anchor: 'start' });
-        B.text(1410, ry - 46, f(r.v) + '（' + pct(r.v) + '）', { size: 20, fill: tc, anchor: 'start' });
+        B.text(XRt + NW + 28, ry - 74, r.label, { size: 22, weight: 900, fill: tc, anchor: 'start' });
+        B.text(XRt + NW + 28, ry - 46, f(r.v) + '（' + pct(r.v) + '）', { size: 20, fill: tc, anchor: 'start' });
       } else {
         var cy = Math.max(ry + h / 2, ry + 10);
-        B.text(1410, cy - 14, r.label, { size: 22, weight: 900, fill: tc, anchor: 'start' });
-        B.text(1410, cy + 13, f(r.v), { size: 21, fill: tc, anchor: 'start' });
-        B.text(1410, cy + 36, pct(r.v), { size: 16, fill: BSC.muted, anchor: 'start' });
+        B.text(XRt + NW + 28, cy - 14, r.label, { size: 22, weight: 900, fill: tc, anchor: 'start' });
+        B.text(XRt + NW + 28, cy + 13, f(r.v), { size: 21, fill: tc, anchor: 'start' });
+        B.text(XRt + NW + 28, cy + 36, pct(r.v), { size: 16, fill: BSC.muted, anchor: 'start' });
       }
       rc += hv; ry += h + gapR;
     });
@@ -816,8 +815,7 @@
     B.text(40, bY, '美図決算：絵でみる財政状態', { size: TTLB_SIZE, weight: 900, fill: BSC.navy, anchor: 'start' });
     B.text(1960, bY, NOTE_URL, { size: 17, fill: BSC.muted, anchor: 'end' });
     B.text(1960, bY - 26, '©HIKICHI＆Company', { size: 19, weight: 700, fill: BSC.navy, anchor: 'end' });
-    if (srcDateB.date) B.text(1960, bY - 54, srcDateB.date, { size: 17, fill: BSC.muted, anchor: 'end' });
-    B.text(1960, bY - (srcDateB.date ? 82 : 54), '単位：' + U.name + '｜出典：' + srcDateB.src, { size: 16, fill: BSC.muted, anchor: 'end' });
+    B.text(1960, bY - 26 - 58, '単位：' + U.name + '｜出典：' + srcDateB.src, { size: 16, fill: BSC.muted, anchor: 'end' });
     return { svg: B.done(), width: W, height: H };
   }
 
