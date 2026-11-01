@@ -38,6 +38,9 @@ jobs:
         if: steps.ready.outputs.go == 'yes'
         working-directory: worker
         run: |
+          # 貼り付けたときに付いた空白や改行を取り除く
+          export CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
+          export CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
           npm install --no-audit --no-fund
           ./build.sh
           npx wrangler deploy
