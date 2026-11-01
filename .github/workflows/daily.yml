@@ -12,6 +12,10 @@ on:
       to:
         description: '取り込む最後の日（例 20261030、空なら今日）'
         required: false
+      redo:
+        description: '取り込み済みの決算も読み直して上書きする（今ある数字は消さずに置き換え）'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -37,7 +41,7 @@ jobs:
         run: node market.js || echo "区分の更新は次回に持ち越し"
       - name: 今日と昨日の決算短信を取り込む
         working-directory: pipeline
-        run: node fetch.js ${{ inputs.from }} ${{ inputs.to }}
+        run: node fetch.js ${{ inputs.from }} ${{ inputs.to }} ${{ inputs.redo && '--redo' || '' }}
       - name: 変わった数字を保存する
         run: |
           git config user.name  "BizKessan bot"

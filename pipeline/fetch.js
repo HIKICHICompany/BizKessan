@@ -103,8 +103,10 @@ function fyLabel(fye) { const m = fye.match(/^(\d{4})-(\d{2})/); return m ? m[1]
 function qLabel(q) { return q === 4 ? '通期' : q === 2 ? '第2四半期（中間期）' : '第' + q + '四半期'; }
 
 async function main() {
-  const [from, to] = process.argv.length > 3 ? [process.argv[2], process.argv[3]]
-    : [jstDate(new Date(Date.now() - 864e5)), jstDate(new Date())];
+  // --redo を付けると、取り込み済みの開示も読み直して上書きする（今ある数字は消さない）
+  const redo = process.argv.includes('--redo');
+  const args = process.argv.slice(2).filter(a => /^\d{8}$/.test(a));
+  const [from, to] = args.length === 2 ? args : [jstDate(new Date(Date.now() - 864e5)), jstDate(new Date())];
   fs.mkdirSync(COS, { recursive: true });
   const seenPath = path.join(DATA, 'processed.json');
   const seen = new Set(readJSON(seenPath, []));
@@ -114,7 +116,7 @@ async function main() {
     if (!rows.length) continue;
     console.log(ymd, '決算短信', rows.length, '件');
     for (const r of rows) {
-      if (seen.has(r.zip)) continue;
+      if (seen.has(r.zip) && !redo) continue;
       await sleep(WAIT_MS);
       let files;
       try {
@@ -143,7 +145,7 @@ async function main() {
       const co = readJSON(p, { code: code4, name: meta.name, docs: [] });
       co.name = meta.name;
       // 同じ期・同じ種類なら新しい開示（訂正を含む）で置き換える
-      co.docs = co.docs.filter(d => !(d.kind === doc.kind && d.fye === doc.fye && d.q === doc.q && d.disclosed <= doc.disclosed));
+      co.docs = co.docs.filter(d => !(d.kind === doc.kind && d.fye === doc.fye && d.q === doc.q && (d.disclosed <= doc.disclosed || d.id === doc.id)));
       if (!co.docs.some(d => d.kind === doc.kind && d.fye === doc.fye && d.q === doc.q)) co.docs.push(doc);
       co.docs.sort((a, b) => (b.fye + b.q).localeCompare(a.fye + a.q) || (a.kind === 'yuho' ? -1 : 1));
       co.updated = new Date().toISOString();
