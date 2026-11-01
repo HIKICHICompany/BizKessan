@@ -56,6 +56,8 @@ async function listDay(ymd) {
   for (let p = 1; p < 30; p++) {
     const url = BASE + 'I_list_' + String(p).padStart(3, '0') + '_' + ymd + '.html';
     const r = await get(url);
+    if (p === 1) console.log('  一覧', ymd, 'TDnetの応答', r.status);
+    if (r.status !== 200 && r.status !== 404) throw new Error('TDnetに届きません（応答 ' + r.status + '）');
     if (r.status !== 200) break;
     const h = r.body.toString('utf8');
     const trs = h.split('<tr>').slice(1);

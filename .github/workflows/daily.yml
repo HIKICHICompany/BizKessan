@@ -4,7 +4,14 @@ on:
   schedule:
     # 日本時間 22:17 に毎日1回（多くの決算短信は15時〜20時に出るため）
     - cron: '17 13 * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      from:
+        description: '取り込む最初の日（例 20261030、空なら昨日）'
+        required: false
+      to:
+        description: '取り込む最後の日（例 20261030、空なら今日）'
+        required: false
 
 permissions:
   contents: write
@@ -27,7 +34,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: 今日と昨日の決算短信を取り込む
         working-directory: pipeline
-        run: node fetch.js
+        run: node fetch.js ${{ inputs.from }} ${{ inputs.to }}
       - name: 変わった数字を保存する
         run: |
           git config user.name  "BizKessan bot"
