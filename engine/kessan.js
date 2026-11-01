@@ -468,6 +468,11 @@
     segflow: 'rgba(43,58,103,0.28)', gnflow: 'rgba(124,191,153,0.45)', cogsflow: 'rgba(179,186,200,0.55)', sgaflow: 'rgba(139,107,184,0.40)', negflow: 'rgba(192,86,63,0.35)'
   };
   var NOTE_URL = 'https://note.com/hikichi_company';
+  // 出典の文の最後の開示日を切り出す（日付は図の右下に出す）
+  function splitDate(src) {
+    var m = String(src || '').match(/^(.*?)[\s　]*(\d{4}年\d{1,2}月\d{1,2}日)[\s　]*$/);
+    return m ? { src: m[1], date: m[2] } : { src: src || '', date: '' };
+  }
   // 決算期の表記：決算が始まる年で FY2026Q2（通期は FY2026）。fye は '2027-03' の形
   // 決算期の表記：2027年3月期 第2四半期（4〜9月）。四半期は期首からの累計の月
   function periodLabel(fye, q) {
@@ -540,7 +545,8 @@
     var wrapN = function (t, n) { var o = []; for (var i = 0; i < t.length; i += n) o.push(t.slice(i, i + n)); return o; };
     var footL = [];
     [cfg.ifrsNote, cfg.segNote].filter(Boolean).forEach(function (t) { wrapN(t, 48).forEach(function (x) { footL.push([x, 15]); }); });
-    wrapN('単位：' + U.name + '｜出典：' + cfg.source, 50).forEach(function (x) { footL.push([x, 15]); });
+    var srcDate = splitDate(cfg.source);
+    wrapN('単位：' + U.name + '｜出典：' + srcDate.src, 50).forEach(function (x) { footL.push([x, 15]); });
     var segSum = segs.reduce(function (a, b) { return a + b.sales; }, 0) || 1;
     var gapS = segs.length > 1 ? Math.min(120, (560 - P.rev * k) / (segs.length - 1)) : 0;
     var sy = segs.length > 1 ? 160 : rT, cut = rT;
@@ -574,17 +580,22 @@
     footL.forEach(function (a, i) { var pn = T(20, 880 - (footL.length - 1 - i) * 19); B.text(pn[0], pn[1], a[0], { size: a[1], fill: M, anchor: 'start' }); });
     node(XR, rT, rB - rT, PAL.rev);
     lines(XR + NW / 2, rT - 128, [['売上高', 32, 900], [fmt(P.rev), 32, 700], [yoy(P.rev, Pp.rev), 19, 500, M]]);
-    var gT = 230, gH = P.gp * k, cH = P.cogs * k, cT = Math.max(gT + gH + 60, Math.min(680, 860 - cH - 110)), rCut = rT + P.gp * k;
+    // 売上総利益の開示がない会社（売上原価を分けない形）は、売上高から直接、営業利益と営業費用へつなぐ
+    var noGP = !has(P.gp), XSRC = noGP ? XR : XG;
+    var gT = noGP ? rT : 230, gH = (noGP ? P.rev : P.gp) * k;
+    if (!noGP) {
+    var cH = P.cogs * k, cT = Math.max(gT + gH + 60, Math.min(680, 860 - cH - 110)), rCut = rT + P.gp * k;
     flow(XR + NW, rT, rCut, XG, gT, gT + gH, PAL.gnflow); flow(XR + NW, rCut, rB, XG, cT, cT + cH, PAL.cogsflow);
     node(XG, gT, gH, PAL.gp); node(XG, cT, cH, PAL.cogs);
     lines(XG + NW / 2, gT - 150, [['売上総利益', 32, 900, GT], [fmt(P.gp), 32, 700, GT], ['粗利率 ' + rt(P.gp, P.rev).toFixed(1) + '%', 19, 500, M], [has(Pp.gp) ? pp(rt(P.gp, P.rev), rt(Pp.gp, Pp.rev)) : '', 19, 500, M]]);
     lines(XG + NW / 2, cT + cH + 6, [['売上原価', 30, 900], ['(' + fmt(P.cogs) + ')', 28, 700], ['売上の' + rt(P.cogs, P.rev).toFixed(1) + '%', 18, 500, M], [has(Pp.cogs) ? pp(rt(P.cogs, P.rev), rt(Pp.cogs, Pp.rev)) : '', 18, 500, M]]);
+    }
     var SGAN = cfg.sgaName, NONOPN = cfg.nonopName, TAXN = cfg.ifrs ? '法人所得税' : '法人税等';
     if (P.op >= 0) {
       var oT = 170, oH = Hf(P.op), sH = P.sga * k, gCut = gT + P.op * k;
       // 販管費の箱は、流れが平らな線にならないよう、出どころより少し下に置く（下にはみ出さない範囲で）
       var sT = Math.min(Math.max(440, oT + oH + 60, gCut + 90), Math.max(440, oT + oH + 60, 900 - sH - 110));
-      flow(XG + NW, gT, gCut, XO, oT, oT + oH, PAL.gnflow); flow(XG + NW, gCut, gT + gH, XO, sT, sT + sH, PAL.sgaflow);
+      flow(XSRC + NW, gT, gCut, XO, oT, oT + oH, PAL.gnflow); flow(XSRC + NW, gCut, gT + gH, XO, sT, sT + sH, PAL.sgaflow);
       node(XO, oT, oH, PAL.op); node(XO, sT, sH, PAL.sga);
       lines(XO + NW / 2, oT - 150, [['営業利益', 32, 900, GT], [fmt(P.op), 32, 700, GT], ['利益率 ' + rt(P.op, P.rev).toFixed(1) + '%', 19, 500, M], [has(Pp.op) ? pp(rt(P.op, P.rev), rt(Pp.op, Pp.rev)) : '', 19, 500, M]]);
       lines(XO + NW / 2, sT + sH + 8, [[SGAN, 30, 900, PAL.sga], ['(' + fmt(P.sga) + ')', 28, 700, PAL.sga], ['売上の' + rt(P.sga, P.rev).toFixed(1) + '%', 18, 500, M]].concat(cfg.sgaNote ? [[cfg.sgaNote, 15, 500, M]] : []));
@@ -618,7 +629,7 @@
     } else {
       // 営業損失：売上総利益のすべてと、足りない分（営業損失）が販管費に流れる
       var sT2 = 300, sH2 = P.sga * k, lossH = -P.op * k;
-      flow(XG + NW, gT, gT + gH, XO, sT2, sT2 + gH, PAL.sgaflow);
+      flow(XSRC + NW, gT, gT + gH, XO, sT2, sT2 + gH, PAL.sgaflow);
       var lx = 1000, ly = 600;
       ad('rect', { x: lx, y: ly, width: 26, height: Math.max(lossH, 3), fill: NEG });
       flow(lx + 26, ly, ly + lossH, XO, sT2 + gH, sT2 + sH2, PAL.negflow);
@@ -645,9 +656,10 @@
         lines(XF - 60, 200, [['当期純損益', 30, 900, P.ni < 0 ? NEG : GT], [(P.ni < 0 ? '△' : '') + fmt(Math.abs(P.ni)), 30, 700, P.ni < 0 ? NEG : GT]], 'start');
       }
     }
+    if (srcDate.date) { var pd = T(1700, 850); B.text(pd[0], pd[1], '開示日 ' + srcDate.date, { size: 16, fill: M, anchor: 'end' }); }
     var pc = T(1700, 878); B.text(pc[0], pc[1], '©HIKICHI＆Company', { size: 18, weight: 700, fill: M, anchor: 'end' });
     var pu = T(1700, 902); B.text(pu[0], pu[1], NOTE_URL, { size: 16, fill: M, anchor: 'end' });
-    var pk = T(20, 910); B.text(pk[0], pk[1], '絵でみる経営成績', { size: 24, weight: 900, fill: PAL.rev, anchor: 'start' });
+    var pk = T(20, 910); B.text(pk[0], pk[1], '美図決算：絵でみる経営成績', { size: 24, weight: 900, fill: PAL.rev, anchor: 'start' });
     return { svg: B.done(), width: W, height: Hh };
   }
 
@@ -697,7 +709,7 @@
   function renderBS(cfg, opt) {
     var noteLines = [];
     var nt = (cfg.notes || []).join('。');
-    for (var ni = 0; ni < nt.length; ni += 118) noteLines.push(nt.slice(ni, ni + 118));
+    for (var ni = 0; ni < nt.length; ni += 104) noteLines.push(nt.slice(ni, ni + 104)); // 右下の開示日にかからない幅
     var EXT = Math.max(0, noteLines.length - 2) * 22;
     var W = 2000, H = 1160 + EXT, B = svgBuilder(W, H), U = cfg.unit;
     var f = function (v) { return Math.round(v / U.div).toLocaleString('ja-JP'); };
@@ -772,8 +784,10 @@
 
     // 足もと
     noteLines.forEach(function (t, i) { B.text(40, 1078 + EXT - (noteLines.length - 1 - i) * 22, t, { size: 15, fill: BSC.muted, anchor: 'start' }); });
-    B.text(40, 1106 + EXT, '単位：' + U.name + '｜出典：' + cfg.source, { size: 16, fill: BSC.muted, anchor: 'start' });
-    B.text(40, 1142 + EXT, '絵でみる財政状態', { size: 26, weight: 900, fill: BSC.navy, anchor: 'start' });
+    var srcDateB = splitDate(cfg.source);
+    if (srcDateB.date) B.text(1960, 1078 + EXT, '開示日 ' + srcDateB.date, { size: 17, fill: BSC.muted, anchor: 'end' });
+    B.text(40, 1106 + EXT, '単位：' + U.name + '｜出典：' + srcDateB.src, { size: 16, fill: BSC.muted, anchor: 'start' });
+    B.text(40, 1142 + EXT, '美図決算：絵でみる財政状態', { size: 26, weight: 900, fill: BSC.navy, anchor: 'start' });
     B.text(1960, 1108 + EXT, '©HIKICHI＆Company', { size: 19, weight: 700, fill: BSC.navy, anchor: 'end' });
     B.text(1960, 1134 + EXT, NOTE_URL, { size: 17, fill: BSC.muted, anchor: 'end' });
     return { svg: B.done(), width: W, height: H };

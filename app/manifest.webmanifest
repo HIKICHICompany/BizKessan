@@ -1,7 +1,7 @@
 {
   "name": "美図決算 β",
   "short_name": "美図決算",
-  "description": "日本企業の決算を、損益と財政状態の流れ図で見る",
+  "description": "企業のお金の流れを見える化する決算アプリ",
   "lang": "ja",
   "start_url": "./",
   "scope": "./",
