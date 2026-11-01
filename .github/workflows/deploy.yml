@@ -45,3 +45,17 @@ jobs:
           ./build.sh
           npx wrangler deploy
           printf '%s' "$PASS_SECRET" | npx wrangler secret put PASS_SECRET
+      - name: 公開できたか確かめる（お試しは見える・メンバー特典は鍵がかかる）
+        if: steps.ready.outputs.go == 'yes'
+        run: |
+          sleep 10
+          B=https://bizkessan.hikichicompany.workers.dev
+          c(){ curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$@"; }
+          FREE=$(node -e "const m=require('./data/meta/market.json');const fs=require('fs');console.log(m.n225.find(c=>fs.existsSync('data/companies/'+c+'.json')))")
+          MEM=$(node -e "const m=require('./data/meta/market.json');const fs=require('fs');console.log(fs.readdirSync('data/companies').map(f=>f.slice(0,4)).find(c=>!m.n225.includes(c)&&/^[0-9A-Z]{4}$/.test(c)))")
+          CODE=$(node pipeline/passcode.js)
+          TOK=$(curl -s -X POST -H 'Content-Type: application/json' -d "{\"code\":\"$CODE\"}" $B/api/login | node -pe 'JSON.parse(require("fs").readFileSync(0)).token||""')
+          r1=$(c $B/); r2=$(c $B/data/index.json); r3=$(c $B/data/companies/$FREE.json); r4=$(c $B/data/companies/$MEM.json); r5=$(c -H "X-Biz-Token: $TOK" $B/data/companies/$MEM.json); r6=$(c $B/data/processed.json)
+          echo "画面 $r1 / 目次 $r2 / お試し($FREE) $r3 / メンバー($MEM)合言葉なし $r4 / 合言葉あり $r5 / 取り込み記録 $r6"
+          [ "$r1$r2$r3$r4$r5$r6" = "200200200401200404" ] || { echo "思ったとおりに動いていません"; exit 1; }
+          echo "すべて思ったとおりです"
