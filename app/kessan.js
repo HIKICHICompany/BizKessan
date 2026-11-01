@@ -667,7 +667,7 @@
     footL.forEach(function (a, i) { B.text(xL, baseY - TTL_SIZE - 12 - (footL.length - 1 - i) * 19, a[0], { size: a[1], fill: M, anchor: 'start' }); });
     B.text(xR, baseY, NOTE_URL, { size: 16, fill: M, anchor: 'end' });
     B.text(xR, baseY - 24, '©HIKICHI＆Company', { size: 18, weight: 700, fill: M, anchor: 'end' });
-    if (srcDate.date) B.text(xR, baseY - 50, '開示日 ' + srcDate.date, { size: 16, fill: M, anchor: 'end' });
+    if (srcDate.date) B.text(xR, baseY - 50, srcDate.date, { size: 16, fill: M, anchor: 'end' });
     return { svg: B.done(), width: W, height: Hh };
   }
 
@@ -803,7 +803,7 @@
     B.text(40, bY - TTLB_SIZE - 12, '単位：' + U.name + '｜出典：' + srcDateB.src, { size: 16, fill: BSC.muted, anchor: 'start' });
     B.text(1960, bY, NOTE_URL, { size: 17, fill: BSC.muted, anchor: 'end' });
     B.text(1960, bY - 26, '©HIKICHI＆Company', { size: 19, weight: 700, fill: BSC.navy, anchor: 'end' });
-    if (srcDateB.date) B.text(1960, bY - 54, '開示日 ' + srcDateB.date, { size: 17, fill: BSC.muted, anchor: 'end' });
+    if (srcDateB.date) B.text(1960, bY - 54, srcDateB.date, { size: 17, fill: BSC.muted, anchor: 'end' });
     return { svg: B.done(), width: W, height: H };
   }
 
