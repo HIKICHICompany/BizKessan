@@ -2,7 +2,7 @@
   'use strict';
 
   // 数字の置き場所：ウェブ版は同じ場所の /data/、Androidアプリは公開先のアドレスから読む
-  var API = window.BIZ_API || (location.hostname === 'appassets.androidplatform.net' ? 'https://bizkessan.hikichi.workers.dev' : '');
+  var API = window.BIZ_API || (location.hostname === 'appassets.androidplatform.net' ? 'https://bizkessan.hikichicompany.workers.dev' : '');
   var DATA = API + '/data/';
   var MEMBER_URL = 'https://note.com/hikichi_company/membership';
   var $ = function (id) { return document.getElementById(id); };
