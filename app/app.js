@@ -4,7 +4,7 @@
   // 数字の置き場所（GitHub）。開発中は window.BIZ_DATA_BASE で差し替える
   var DATA = window.BIZ_DATA_BASE || 'https://raw.githubusercontent.com/HIKICHICompany/BizKessan/main/data/';
   var $ = function (id) { return document.getElementById(id); };
-  var companies = [], index = {};
+  var companies = [], index = {}, market = { seg: {}, n225: [] }, n225 = {};
 
   /* ---------- 読み込み ---------- */
   function getJSON(url) {
@@ -54,6 +54,7 @@
 
   function drawRecent() {
     var ul = $('recent'); ul.innerHTML = '';
+    $('recentLab').hidden = !load('recent', []).length;
     load('recent', []).forEach(function (it) {
       var li = document.createElement('li'), b = document.createElement('button');
       b.type = 'button'; b.textContent = it.name + ' ' + it.code;
@@ -79,6 +80,7 @@
   var current = null, figs = {};
   function open(it) {
     list.hidden = true; input.value = it.name + ' ' + it.code; input.blur();
+    browseY = window.scrollY; $('browse').hidden = true; $('back').hidden = false; window.scrollTo(0, 0);
     $('main').innerHTML = ''; $('more').hidden = true; $('extra').innerHTML = '';
     status(it.name + 'の決算を読み込んでいます…');
     getJSON(DATA + 'companies/' + it.code + '.json').then(function (co) {
@@ -125,8 +127,14 @@
 
   function section(d, co, isMain) {
     var s = document.createElement('section');
-    s.innerHTML = '<div class="period"><h2></h2><p></p></div>';
+    s.innerHTML = '<div class="period"><div class="ph"><h2></h2></div><p></p></div>';
     s.querySelector('h2').textContent = co.name + '（' + co.code + '）' + Kessan.periodLabel(d.fye, d.q);
+    if (isMain) {
+      var fb = document.createElement('button'); fb.type = 'button'; fb.className = 'fav';
+      var paint = function () { var on = isFav(co.code); fb.setAttribute('aria-pressed', String(on)); fb.textContent = on ? '★ お気に入り' : '☆ お気に入りに追加'; };
+      fb.addEventListener('click', function () { toggleFav({ code: co.code, name: co.name }); paint(); });
+      paint(); s.querySelector('.ph').appendChild(fb);
+    }
     s.querySelector('p').innerHTML = srcBadge(d) + '<span></span>';
     s.querySelector('p span:last-child').textContent = (d.title || '') + '　' + (d.disclosed ? fmtDate(d.disclosed) + ' 開示' : '');
     s.appendChild(figure(d.pl, 'pl', '絵でみる経営成績', d, co));
@@ -217,10 +225,102 @@
     }).catch(function (e) { status(e.message, true); });
   }
 
+  /* ---------- お気に入り ---------- */
+  function favs() { return load('fav', []); }
+  function isFav(code) { return favs().some(function (x) { return x.code === code; }); }
+  function toggleFav(it) {
+    var f = favs(), on = f.some(function (x) { return x.code === it.code; });
+    f = on ? f.filter(function (x) { return x.code !== it.code; }) : [{ code: it.code, name: it.name }].concat(f);
+    store('fav', f); drawFavs(); if (!$('browse').hidden) drawRows();
+  }
+  function drawFavs() {
+    var ul = $('favs'); ul.innerHTML = '';
+    favs().forEach(function (it) {
+      var li = document.createElement('li'), b = document.createElement('button');
+      b.type = 'button'; b.textContent = '★ ' + it.name + ' ' + it.code;
+      b.addEventListener('click', function () { open(it); });
+      li.appendChild(b); ul.appendChild(li);
+    });
+    $('favWrap').hidden = !favs().length;
+  }
+
+  /* ---------- 決算の一覧（月・区分で絞り込み） ---------- */
+  var SEGN = { P: 'プライム', S: 'スタンダード', G: 'グロース', PRO: 'PRO' };
+  var FILTERS = [['all', 'すべて'], ['n225', '日経225'], ['P', 'プライム'], ['S', 'スタンダード'], ['G', 'グロース'], ['fav', '★ お気に入り']];
+  var filt = load('filter', 'all'), month = '', shown = 120, browseY = 0;
+  function rowsAll() {
+    return Object.keys(index).map(function (code) {
+      var v = index[code]; return { code: code, name: v[0], label: v[1], kind: v[2], disclosed: v[3] || '', fye: v[4], q: v[5] };
+    }).filter(function (r) { return r.disclosed; });
+  }
+  function drawMonths(all) {
+    var ms = {}; all.forEach(function (r) { ms[r.disclosed.slice(0, 6)] = 1; });
+    var keys = Object.keys(ms).sort().reverse(), sel = $('month');
+    if (!month || keys.indexOf(month) < 0) month = keys[0] || '';
+    sel.innerHTML = keys.map(function (k) { return '<option value="' + k + '">' + k.slice(0, 4) + '年' + (+k.slice(4, 6)) + '月に出た決算</option>'; }).join('');
+    sel.value = month;
+  }
+  function drawFilters() {
+    var box = $('filters'); box.innerHTML = '';
+    FILTERS.forEach(function (f) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = f[1];
+      b.setAttribute('aria-pressed', String(filt === f[0]));
+      b.addEventListener('click', function () { filt = f[0]; store('filter', filt); shown = 120; drawFilters(); drawRows(); });
+      box.appendChild(b);
+    });
+  }
+  var WD = '日月火水木金土';
+  function dayHead(ymd) { var d = new Date(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8)); return (+ymd.slice(4, 6)) + '月' + (+ymd.slice(6, 8)) + '日（' + WD[d.getDay()] + '）'; }
+  function drawRows() {
+    var all = rowsAll(); drawMonths(all);
+    var fv = {}; favs().forEach(function (x) { fv[x.code] = 1; });
+    var rows = all.filter(function (r) {
+      if (r.disclosed.slice(0, 6) !== month) return false;
+      if (filt === 'n225') return n225[r.code];
+      if (filt === 'fav') return fv[r.code];
+      if (filt !== 'all') return market.seg[r.code] === filt;
+      return true;
+    }).sort(function (a, b) { return b.disclosed.localeCompare(a.disclosed) || a.code.localeCompare(b.code); });
+    $('count').textContent = rows.length ? rows.length + '社' : (filt === 'fav' ? 'この月に決算が出たお気に入りはありません。銘柄の画面の「☆ お気に入りに追加」で登録できます。' : 'この条件の決算はまだありません。');
+    var box = $('rows'); box.innerHTML = ''; var lastDay = '', ul = null;
+    rows.slice(0, shown).forEach(function (r) {
+      var day = r.disclosed.slice(0, 8);
+      if (day !== lastDay) {
+        lastDay = day; var n = rows.filter(function (x) { return x.disclosed.slice(0, 8) === day; }).length;
+        var h = document.createElement('h3'); h.className = 'day'; h.textContent = dayHead(day) + '　' + n + '社'; box.appendChild(h);
+        ul = document.createElement('ul'); ul.className = 'rows'; box.appendChild(ul);
+      }
+      var li = document.createElement('li'), b = document.createElement('button');
+      b.type = 'button'; b.className = 'row';
+      var seg = market.seg[r.code];
+      b.innerHTML = '<span class="rt"><span class="rn"></span><span class="rc"></span></span><span class="rb"></span><span class="rp"></span>';
+      b.querySelector('.rn').textContent = (fv[r.code] ? '★ ' : '') + r.name;
+      b.querySelector('.rc').textContent = r.code;
+      b.querySelector('.rb').innerHTML = (n225[r.code] ? '<i class="tg n">225</i>' : '') + (seg ? '<i class="tg s' + seg + '">' + SEGN[seg] + '</i>' : '');
+      b.querySelector('.rp').textContent = Kessan.periodLabel(r.fye, r.q) || r.label;
+      b.addEventListener('click', function () { open({ code: r.code, name: r.name }); });
+      li.appendChild(b); ul.appendChild(li);
+    });
+    $('moreRows').hidden = rows.length <= shown;
+  }
+  $('month').addEventListener('change', function () { month = this.value; shown = 120; drawRows(); });
+  $('moreRows').addEventListener('click', function () { shown += 200; drawRows(); });
+  $('back').addEventListener('click', function () {
+    $('main').innerHTML = ''; $('more').hidden = true; $('extra').innerHTML = ''; current = null; status('');
+    input.value = ''; $('back').hidden = true; $('browse').hidden = false; drawRows(); window.scrollTo(0, browseY);
+  });
+
   /* ---------- 起動 ---------- */
   fetch('companies.json').then(function (r) { return r.json(); }).then(function (c) { companies = c; })
     .catch(function () { status('銘柄の一覧を読み込めませんでした。', true); });
   index = (load('index', {}) || {});
-  getJSON(DATA + 'index.json').then(function (ix) { if (ix && ix.companies) { index = ix.companies; store('index', index); } }).catch(function () {});
-  drawRecent();
+  market = load('market', market) || market;
+  var setN = function () { n225 = {}; (market.n225 || []).forEach(function (c) { n225[c] = 1; }); };
+  setN(); drawFilters(); drawRows();
+  Promise.all([
+    getJSON(DATA + 'index.json').then(function (ix) { if (ix && ix.companies) { index = ix.companies; store('index', index); } }),
+    getJSON(DATA + 'meta/market.json').then(function (m) { if (m && m.seg) { market = { seg: m.seg, n225: m.n225 }; store('market', market); setN(); } })
+  ]).catch(function () { status('一覧を更新できませんでした。前回読み込んだ内容を表示しています。', true); })
+    .then(function () { if (!$('browse').hidden) drawRows(); });
+  drawRecent(); drawFavs();
 })();

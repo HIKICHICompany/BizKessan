@@ -32,6 +32,9 @@ jobs:
       - name: 部品を入れる
         working-directory: pipeline
         run: npm install --no-audit --no-fund
+      - name: 銘柄の区分を更新する（週1回：東証の上場銘柄一覧と日経225）
+        working-directory: pipeline
+        run: node market.js || echo "区分の更新は次回に持ち越し"
       - name: 今日と昨日の決算短信を取り込む
         working-directory: pipeline
         run: node fetch.js ${{ inputs.from }} ${{ inputs.to }}

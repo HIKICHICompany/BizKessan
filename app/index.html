@@ -45,6 +45,30 @@
   .recent { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
   .recent button { font: inherit; font-size: 14px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); cursor: pointer; }
 
+  .lab { margin: 12px 2px 0; font-size: 12px; color: var(--faint); }
+  .lab + .recent { margin-top: 6px; }
+  .browse { margin-top: 22px; }
+  .bh { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .bh h2 { font-size: 19px; margin: 0; }
+  .bh select { font: inherit; font-size: 14px; padding: 7px 10px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--paper); color: var(--ink); }
+  .count { font-size: 13px; color: var(--sub); margin: 10px 2px 0; line-height: 1.6; }
+  .day { font-size: 13px; color: var(--sub); margin: 18px 2px 6px; font-weight: 700; }
+  ul.rows { list-style: none; margin: 0; padding: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  ul.rows li + li { border-top: 1px solid var(--line); }
+  .row { all: unset; box-sizing: border-box; display: grid; grid-template-columns: 1fr auto; grid-template-areas: "t b" "p p"; gap: 2px 8px; width: 100%; padding: 11px 14px; cursor: pointer; }
+  .row:hover, .row:focus-visible { background: var(--navy-soft); }
+  .rt { grid-area: t; display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+  .rn { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rc { font-size: 13px; color: var(--sub); font-variant-numeric: tabular-nums; }
+  .rb { grid-area: b; display: flex; gap: 4px; align-items: center; }
+  .rp { grid-area: p; font-size: 12.5px; color: var(--sub); }
+  .tg { font-style: normal; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; border: 1px solid currentColor; white-space: nowrap; }
+  .tg.n { color: #8a5a00; } .tg.sP { color: var(--navy); } .tg.sS { color: #4f6b3a; } .tg.sG { color: #8b4a7a; } .tg.sPRO { color: var(--sub); }
+  .btn.wide { width: 100%; margin-top: 12px; }
+  .btn.back { margin-top: 16px; }
+  .ph { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .fav { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 999px; border: 1.5px solid #b08400; background: var(--paper); color: #8a6a00; cursor: pointer; }
+  .fav[aria-pressed="true"] { background: #fff4d6; }
   .status { margin: 18px 2px 0; color: var(--sub); font-size: 15px; line-height: 1.7; min-height: 1.7em; }
   .status.error { color: var(--red); }
 
@@ -98,7 +122,18 @@
     <input id="q" type="search" autocomplete="off" placeholder="銘柄名か証券コード" aria-label="銘柄名か証券コード" aria-controls="suggest">
     <ul id="suggest" class="suggest" role="listbox" hidden></ul>
   </div>
+  <div id="favWrap" hidden><p class="lab">お気に入り</p><ul id="favs" class="recent" aria-label="お気に入り"></ul></div>
+  <p class="lab" id="recentLab" hidden>最近見た銘柄</p>
   <ul id="recent" class="recent" aria-label="最近見た銘柄"></ul>
+
+  <section id="browse" class="browse" aria-label="決算の一覧">
+    <div class="bh"><h2>決算の一覧</h2><select id="month" aria-label="月を選ぶ"></select></div>
+    <div class="chips" id="filters" role="group" aria-label="区分で絞り込む"></div>
+    <p id="count" class="count"></p>
+    <div id="rows"></div>
+    <button type="button" id="moreRows" class="btn wide" hidden>もっと見る</button>
+  </section>
+  <button type="button" id="back" class="btn back" hidden>← 決算の一覧へ</button>
 
   <p id="status" class="status" role="status" aria-live="polite"></p>
 

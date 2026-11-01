@@ -158,7 +158,8 @@ async function main() {
   fs.readdirSync(COS).filter(f => f.endsWith('.json')).forEach(f => {
     const co = readJSON(path.join(COS, f), null); if (!co || !co.docs.length) return;
     const top = pickLatest(co.docs);
-    index[co.code] = [co.name, top ? top.label : '', top ? top.kind : ''];
+    // [社名, 期の表示, 種類（短信/有報）, 開示日時, 決算期末, 四半期]
+    index[co.code] = [co.name, top ? top.label : '', top ? top.kind : '', top ? top.disclosed : '', top ? top.fye : '', top ? top.q : 4];
   });
   fs.writeFileSync(path.join(DATA, 'index.json'), JSON.stringify({ updated: new Date().toISOString(), companies: index }));
   console.log('追加', added, '件／一部読めず', failed, '件／銘柄数', Object.keys(index).length);
