@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.ready.outputs.go == 'yes'
         with:
-          node-version: '20'
+          node-version: '22'
       - name: 公開する
         if: steps.ready.outputs.go == 'yes'
         working-directory: worker
