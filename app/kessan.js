@@ -536,8 +536,12 @@
     }
     var M = PAL.muted, GT = PAL.ord, NEG = PAL.neg;
     var ttl = cfg.name + '（' + cfg.code + '）' + (opt && opt.period ? '　' + opt.period : '');
-    B.text(OX + 860, OY + 76, ttl, { size: ttl.length > 24 ? 50 : 58, weight: 900 });
+    var TTL_SIZE = ttl.length > 24 ? 50 : 58;
+    B.text(OX + 860, OY + 76, ttl, { size: TTL_SIZE, weight: 900 });
     gy = 92;
+    // 図の本体は少し小さくして、下に余白をつくる（題名と下の欄はそのままの大きさ）
+    var SC = 0.9, scX = W / 2, scY = OY + 110;
+    B.add('<g transform="translate(' + scX + ' ' + scY + ') scale(' + SC + ') translate(' + (-scX) + ' ' + (-scY) + ')">');
     var XS = 310, XR = 600, XG = 880, XO = 1150, XF = 1420;
     var rT = 300, rB = rT + P.rev * k;
     // セグメント
@@ -578,7 +582,6 @@
       lines(XS - 24, sy + 4, [[sg.name, sg.name.length > 8 ? 26 : 34, 900]].concat(info), 'end');
       cut += h; sy += h + gapS;
     });
-    footL.forEach(function (a, i) { var pn = T(20, 880 - (footL.length - 1 - i) * 19); B.text(pn[0], pn[1], a[0], { size: a[1], fill: M, anchor: 'start' }); });
     node(XR, rT, rB - rT, PAL.rev);
     lines(XR + NW / 2, rT - 128, [['売上高', 32, 900], [fmt(P.rev), 32, 700], [yoy(P.rev, Pp.rev), 19, 500, M]]);
     // 売上総利益の開示がない会社（売上原価を分けない形）は、売上高から直接、営業利益と営業費用へつなぐ
@@ -657,10 +660,14 @@
         lines(XF - 60, 200, [['当期純損益', 30, 900, P.ni < 0 ? NEG : GT], [(P.ni < 0 ? '△' : '') + fmt(Math.abs(P.ni)), 30, 700, P.ni < 0 ? NEG : GT]], 'start');
       }
     }
-    if (srcDate.date) { var pd = T(1700, 850); B.text(pd[0], pd[1], '開示日 ' + srcDate.date, { size: 16, fill: M, anchor: 'end' }); }
-    var pc = T(1700, 878); B.text(pc[0], pc[1], '©HIKICHI＆Company', { size: 18, weight: 700, fill: M, anchor: 'end' });
-    var pu = T(1700, 902); B.text(pu[0], pu[1], NOTE_URL, { size: 16, fill: M, anchor: 'end' });
-    var pk = T(20, 910); B.text(pk[0], pk[1], '美図決算：絵でみる経営成績', { size: 24, weight: 900, fill: PAL.rev, anchor: 'start' });
+    B.add('</g>');
+    // 下の欄：左に出典と「美図決算：…」（題名と同じ大きさ）、右に開示日・©・note
+    var baseY = Hh - 26, xL = OX + 20, xR = OX + 1700;
+    B.text(xL, baseY, '美図決算：絵でみる経営成績', { size: TTL_SIZE, weight: 900, fill: PAL.rev, anchor: 'start' });
+    footL.forEach(function (a, i) { B.text(xL, baseY - TTL_SIZE - 12 - (footL.length - 1 - i) * 19, a[0], { size: a[1], fill: M, anchor: 'start' }); });
+    B.text(xR, baseY, NOTE_URL, { size: 16, fill: M, anchor: 'end' });
+    B.text(xR, baseY - 24, '©HIKICHI＆Company', { size: 18, weight: 700, fill: M, anchor: 'end' });
+    if (srcDate.date) B.text(xR, baseY - 50, '開示日 ' + srcDate.date, { size: 16, fill: M, anchor: 'end' });
     return { svg: B.done(), width: W, height: Hh };
   }
 
@@ -722,7 +729,11 @@
       B.add('<path d="M' + x0 + ',' + a0 + ' C' + m + ',' + a0 + ' ' + m + ',' + a1 + ' ' + x1 + ',' + a1 + ' L' + x1 + ',' + b1 + ' C' + m + ',' + b1 + ' ' + m + ',' + b0 + ' ' + x0 + ',' + b0 + ' Z" fill="' + c + '" stroke="' + c + '" stroke-width="0.6"/>');
     }
     var ttlB = cfg.name + '（' + cfg.code + '）' + (opt && opt.period ? '　' + opt.period : '');
-    B.text(W / 2, 92, ttlB, { size: ttlB.length > 26 ? 46 : 52, weight: 900, fill: BSC.navy });
+    var TTLB_SIZE = ttlB.length > 26 ? 46 : 52;
+    B.text(W / 2, 92, ttlB, { size: TTLB_SIZE, weight: 900, fill: BSC.navy });
+    // 図の本体は少し小さくして、下に余白をつくる
+    var scXB = W / 2, scYB = 130;
+    B.add('<g transform="translate(' + scXB + ' ' + scYB + ') scale(0.9) translate(' + (-scXB) + ' ' + (-scYB) + ')">');
 
     // 中央：総資産
     var cT = 303, cB = cT + SPAN;
@@ -784,13 +795,15 @@
     midLabel(ryEq, '純資産', cfg.netAssets, BSC.eqText);
 
     // 足もと
+    B.add('</g>');
     noteLines.forEach(function (t, i) { B.text(40, 1078 + EXT - (noteLines.length - 1 - i) * 22, t, { size: 15, fill: BSC.muted, anchor: 'start' }); });
     var srcDateB = splitDate(cfg.source);
-    if (srcDateB.date) B.text(1960, 1078 + EXT, '開示日 ' + srcDateB.date, { size: 17, fill: BSC.muted, anchor: 'end' });
-    B.text(40, 1106 + EXT, '単位：' + U.name + '｜出典：' + srcDateB.src, { size: 16, fill: BSC.muted, anchor: 'start' });
-    B.text(40, 1142 + EXT, '美図決算：絵でみる財政状態', { size: 26, weight: 900, fill: BSC.navy, anchor: 'start' });
-    B.text(1960, 1108 + EXT, '©HIKICHI＆Company', { size: 19, weight: 700, fill: BSC.navy, anchor: 'end' });
-    B.text(1960, 1134 + EXT, NOTE_URL, { size: 17, fill: BSC.muted, anchor: 'end' });
+    var bY = H - 28;
+    B.text(40, bY, '美図決算：絵でみる財政状態', { size: TTLB_SIZE, weight: 900, fill: BSC.navy, anchor: 'start' });
+    B.text(40, bY - TTLB_SIZE - 12, '単位：' + U.name + '｜出典：' + srcDateB.src, { size: 16, fill: BSC.muted, anchor: 'start' });
+    B.text(1960, bY, NOTE_URL, { size: 17, fill: BSC.muted, anchor: 'end' });
+    B.text(1960, bY - 26, '©HIKICHI＆Company', { size: 19, weight: 700, fill: BSC.navy, anchor: 'end' });
+    if (srcDateB.date) B.text(1960, bY - 54, '開示日 ' + srcDateB.date, { size: 17, fill: BSC.muted, anchor: 'end' });
     return { svg: B.done(), width: W, height: H };
   }
 
