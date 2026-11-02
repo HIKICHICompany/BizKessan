@@ -168,7 +168,151 @@
   }
 
   /* ---------- 損益：sk.js の CONFIG と同じ形に組み立てる ---------- */
+  /* ---------- 米国基準：タグのない財務諸表の表を読み、サマリーの数字と照らして合うときだけ使う ---------- */
+  function isUS(files) { return Object.keys(files).some(function (n) { return /edus(sm|fr)/i.test(n); }); }
+  function usTables(files, kind) {
+    // kind: 'pl' | 'bs'。添付の該当ページの表を、行ごとに「科目名・前期・当期」に直す
+    var re = new RegExp(kind + '\\d*-[^/]*ixbrl\\.htm$', 'i'), html = '';
+    Object.keys(files).filter(function (n) { return /Attachment/i.test(n) && re.test(n.split('/').pop()); }).sort().forEach(function (n) { html += files[n]; });
+    if (!html) return null;
+    var txt = function (s) { return s.replace(/<[^>]+>/g, '').replace(/&#160;|&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim(); };
+    var plainText = txt(html.replace(/<style[\s\S]*?<\/style>/gi, ''));
+    var mul = /単位[^）)]{0,4}千円/.test(plainText) ? 1e3 : /単位[^）)]{0,4}億円/.test(plainText) ? 1e8 : /百万円/.test(plainText) ? 1e6 : 1e6;
+    var rows = [];
+    html.replace(/<style[\s\S]*?<\/style>/gi, '').split(/<tr[\s>]/i).slice(1).forEach(function (r) {
+      var cells = r.split(/<\/tr>/i)[0].split(/<t[dh][\s>]/i).slice(1).map(function (c) { return txt('<' + c); }).filter(function (c) { return c !== ''; });
+      var label = [], amts = [], paren = false, started = false;
+      cells.forEach(function (c) {
+        var t = c.replace(/[\s　]/g, '');
+        var m = t.match(/^[(（]?([△▲\-－]?)([0-9,]+)[)）]?$/);
+        if (/^[-－―]$/.test(t)) { started = true; amts.push(0); return; }
+        if (m && (/,/.test(m[2]) || m[2].length >= 1) && !/\./.test(t)) {
+          started = true; if (/^[(（]/.test(t)) paren = true;
+          amts.push((m[1] ? -1 : 1) * parseInt(m[2].replace(/,/g, ''), 10) * mul); return;
+        }
+        if (/^[△▲\-]?[0-9]+\.[0-9]+%?$/.test(t)) { started = true; return; } // 割合の列はとばす
+        if (!started) label.push(t);
+      });
+      var lab = label.length ? label[label.length - 1] : '';
+      if (!lab && !amts.length) return;
+      rows.push({ label: lab, all: label.join(''), amts: amts, paren: paren });
+    });
+    return { rows: rows, mul: mul };
+  }
+  function usSummary(T) {
+    var o = {};
+    T.data.facts.forEach(function (f) {
+      if (!f.summary) return;
+      var n = ln(f.concept), c = f.ctx || '';
+      if (!/ResultMember/.test(c) || /NonConsolidated/.test(c)) return;
+      var when = /^Current/.test(c) ? 'cur' : /^Prior/.test(c) ? 'pri' : null; if (!when) return;
+      if (o[n + '_' + when] === undefined) o[n + '_' + when] = f.value;
+    });
+    return o;
+  }
+  // 表のどの列が当期かを、サマリーの数字（当期・前期）に一致する列で決める
+  function usColumn(rows, target, tol) {
+    for (var i = 0; i < rows.length; i++) for (var j = 0; j < rows[i].amts.length; j++) if (Math.abs(rows[i].amts[j] - target) <= tol) return { row: i, col: j };
+    return null;
+  }
+  function usMeta(T, meta, tb) {
+    var name = cleanName(meta && meta.name || T.summary.CompanyName);
+    return { name: name, code: (meta && meta.code) || '', unit: tb.mul >= 1e6 ? { div: 1e6, name: '百万円' } : { div: tb.mul, name: tb.mul === 1e3 ? '千円' : '円' },
+      source: name + ' ' + ((meta && meta.title) || '決算短信') + (meta && meta.date ? ' ' + meta.date : '') };
+  }
+  function extractPLUS(files, DP, meta) {
+    var T = tools(files, DP), S = usSummary(T), tb = usTables(files, 'pl');
+    var fail = { ok: false, reason: '米国基準の損益計算書の表を、サマリーの数字と照らして読み取れませんでした。' };
+    if (!tb || S.NetSalesUS_cur === undefined || S.OperatingIncomeUS_cur === undefined) return fail;
+    var tol = tb.mul, R = tb.rows;
+    var a = usColumn(R, S.NetSalesUS_cur, tol); if (!a) return fail;
+    var CUR = a.col, PRI = CUR === 0 ? 1 : 0;
+    var v = function (r, col) { return r && r.amts.length > col ? r.amts[col] : undefined; };
+    var find = function (re, from, to) { for (var i = from || 0; i < (to === undefined ? R.length : to); i++) if (re.test(R[i].label) && R[i].amts.length) return i; return -1; };
+    var byVal = function (x) { if (x === undefined) return -1; for (var i = 0; i < R.length; i++) if (Math.abs(v(R[i], CUR) - x) <= tol) return i; return -1; };
+    var iRev = a.row, iOp = byVal(S.OperatingIncomeUS_cur), iPre = byVal(S.IncomeBeforeIncomeTaxesUS_cur), iPar = byVal(S.NetIncomeUS_cur);
+    if (iOp < 0 || iPre < 0 || iPar < 0 || !(iRev < iOp && iOp < iPre && iPre < iPar)) return fail;
+    var iCogs = find(/^売上原価/, iRev + 1, iOp), iGp = find(/^売上総利益/, iRev + 1, iOp), iSga = find(/^販売費及び一般管理費/, iRev + 1, iOp);
+    // 非支配持分を含む純利益：「非支配持分控除前…純利益」か「（四半期・中間・当期）純利益」の行。なければ親会社分＋非支配持分
+    var iNi = find(/(非支配持分控除前.*純利益|^(四半期|中間|当期)?純利益$)/, iPre + 1, iPar);
+    var iNci = find(/非支配持分(に)?帰属/, iPre + 1, iPar);
+    var iEq = find(/^持分法(による)?投資損益$/, iPre + 1, iNi < 0 ? iPar : iNi);
+    function pl(col, sumRev) {
+      var rev = v(R[iRev], col); if (rev === undefined) return null;
+      var op = v(R[iOp], col), pre = v(R[iPre], col), par = v(R[iPar], col);
+      var ni = iNi >= 0 ? v(R[iNi], col) : (iNci >= 0 ? par + v(R[iNci], col) : par);
+      if (iEq >= 0) pre += v(R[iEq], col); // 税引後の持分法損益は、営業外の側にまとめる（税金の箱を正しく保つ）
+      var gp = iGp >= 0 ? v(R[iGp], col) : (iCogs >= 0 ? rev - v(R[iCogs], col) : undefined);
+      var sgaAct = iSga >= 0 ? v(R[iSga], col) : undefined;
+      var o = { opDerived: false, rev: rev, gp: gp, cogs: gp !== undefined ? rev - gp : undefined, op: op, sga: gp !== undefined ? gp - op : rev - op, sgaAct: sgaAct, ni: ni, niParent: par, pre: pre, tax: pre - ni };
+      o.nonop = pre - op; o.sp = 0; o.ord = pre;
+      return o;
+    }
+    var c = pl(CUR), p = pl(PRI) || {};
+    if (!c || [c.rev, c.op, c.pre, c.ni].some(function (x) { return x === undefined || isNaN(x); })) return fail;
+    // 前期の列も、サマリーの前期の売上高と合うときだけ使う
+    if (S.NetSalesUS_pri !== undefined && Math.abs((p.rev || 0) - S.NetSalesUS_pri) > tol) p = {};
+    var M = usMeta(T, meta, tb), f = function (x) { return Math.round(x / M.unit.div).toLocaleString('ja-JP'); };
+    var sgaName = c.gp === undefined ? '営業費用' : '販管費', sgaNote = null;
+    if (c.gp !== undefined && c.sgaAct !== undefined && Math.abs(c.sgaAct - c.sga) > tol * 3) {
+      sgaName = '販管費等';
+      var others = []; for (var i = (iGp >= 0 ? iGp : iRev) + 1; i < iOp; i++) { var r = R[i]; if (i === iSga || i === iCogs || !r.amts.length || /合計|^計$/.test(r.label)) continue; others.push(r); }
+      var diff = c.sga - c.sgaAct;
+      var lab = others.length === 1 && /費/.test(others[0].label) && !/収益/.test(others[0].label) ? others[0].label : (diff > 0 ? 'その他の営業費用' : 'その他の営業収益');
+      sgaNote = '販管費' + f(c.sgaAct) + (diff > 0 ? '＋' : '−') + lab + f(Math.abs(diff));
+    }
+    return { ok: true, kind: 'pl', usgaap: true, ifrsNote: null, unit: M.unit, ifrs: false, name: M.name, code: M.code, source: M.source,
+      cur: c, prev: p, segments: [{ name: '全社', sales: c.rev, salesPrev: p.rev, profit: null, single: true }], segNote: null,
+      sgaName: sgaName, sgaNote: sgaNote, nonopName: '営業外損益' };
+  }
+  function extractBSUS(files, DP, meta) {
+    var T = tools(files, DP), S = usSummary(T), tb = usTables(files, 'bs');
+    var fail = { ok: false, reason: '米国基準の貸借対照表の表を、サマリーの数字と照らして読み取れませんでした。' };
+    if (!tb || S.TotalAssetsUS_cur === undefined) return fail;
+    var tol = tb.mul, R = tb.rows;
+    var a = usColumn(R, S.TotalAssetsUS_cur, tol); if (!a) return fail;
+    var CUR = a.col, PRI = CUR === 0 ? 1 : 0, iTot = a.row;
+    var v = function (r, col) { return r && r.amts.length > col ? r.amts[col] : undefined; };
+    var find = function (re, from, to) { for (var i = from || 0; i < (to === undefined ? R.length : to); i++) if (re.test(R[i].label) && R[i].amts.length) return i; return -1; };
+    // 左：資産の明細（小計・合計の行は除く）。引当金などのマイナスは、直前の債権の行から差し引く
+    var leaves = [];
+    for (var i = 0; i < iTot; i++) {
+      var r = R[i], x = v(r, CUR); if (x === undefined || r.paren || /合計$|^計$/.test(r.label) || !r.label) continue;
+      if (x < 0) {
+        var t = null; for (var j = leaves.length - 1; j >= 0; j--) if (/債権|売掛金|リース/.test(leaves[j].label)) { t = leaves[j]; break; }
+        (t || leaves[leaves.length - 1] || { v: 0 }).v += x; continue;
+      }
+      leaves.push({ label: r.label.replace(/[（(]注[0-9０-９]*[)）]$/, ''), v: x });
+    }
+    var sum = leaves.reduce(function (s, l) { return s + l.v; }, 0), total = v(R[iTot], CUR);
+    if (Math.abs(sum - total) > tol * 3) return fail;
+    // 小さいものは「その他の資産」にまとめる（現金は残す）
+    var big = [], small = 0;
+    leaves.forEach(function (l, k) { if (k === 0 || l.v >= total * 0.04) big.push({ label: l.label, v: l.v, merged: false }); else small += l.v; });
+    while (big.length > 8) { var mi = 1; for (var q = 2; q < big.length; q++) if (big[q].v < big[mi].v) mi = q; small += big[mi].v; big.splice(mi, 1); }
+    if (small > 0) big.push({ label: 'その他の資産', v: small });
+    // 右：負債と純資産
+    var iLiab = find(/^負債合計$/, iTot + 1), iNA = find(/^純資産合計$|^資本合計$/, iTot + 1);
+    var na = S.NetAssetsUS_cur !== undefined ? S.NetAssetsUS_cur : v(R[iNA], CUR);
+    var liab = iLiab >= 0 ? v(R[iLiab], CUR) : (na !== undefined ? total - na : undefined);
+    if (liab === undefined || na === undefined || Math.abs(liab + na - total) > tol * 3) return fail;
+    var iCL = find(/^流動負債(合計)?$/, iTot + 1), iFL = find(/^固定負債(合計)?$/, iTot + 1);
+    var cl = v(R[iCL], CUR), fl = v(R[iFL], CUR);
+    var right = [];
+    if (cl !== undefined && fl !== undefined && Math.abs(cl + fl - liab) <= tol * 3) { right.push({ label: '流動負債', v: cl, kind: 'liab' }); right.push({ label: '固定負債', v: fl, kind: 'liab' }); }
+    else right.push({ label: '負債', v: liab, kind: 'liab' });
+    var se = S.ShareholdersEquityUS_cur !== undefined ? S.ShareholdersEquityUS_cur : v(R[find(/^株主資本(合計)?$/, iTot + 1)], CUR);
+    if (se !== undefined && se <= na + tol) {
+      right.push({ label: '株主資本', v: se, kind: 'eq', strong: true });
+      if (na - se > tol) right.push({ label: '非支配持分', v: na - se, kind: 'eq' });
+    } else right.push({ label: '純資産', v: na, kind: 'eq', strong: true });
+    var M = usMeta(T, meta, tb);
+    return { ok: true, kind: 'bs', usgaap: true, unit: M.unit, ifrs: false, name: M.name, code: M.code, source: M.source,
+      total: total, totalPrev: v(R[iTot], PRI), liab: liab, netAssets: na, assets: big, right: right, notes: [], kpi: null };
+  }
+
   function extractPL(files, DP, meta) {
+    if (isUS(files)) return extractPLUS(files, DP, meta);
     var m = TP.analyze(files, DP);
     if (!m.ok || m.mode !== 'full') return { ok: false, reason: m.reason || 'この短信は財務諸表の添付がないため、この形では描けません。', model: m };
     var T = tools(files, DP), cur = m.info.period.cur, pri = m.info.period.prior;
@@ -181,6 +325,8 @@
       var ord = T.val(['OrdinaryIncome'], ctx);
       var pre = T.val(['IncomeBeforeIncomeTaxes', 'ProfitLossBeforeTaxIFRS', 'IncomeLossBeforeIncomeTaxes'], ctx);
       var ni = T.val(['ProfitLoss', 'ProfitLossIFRS'], ctx);
+      // 親会社株主に帰属する純利益（非支配株主の分を除いたもの。短信の見出しの数字）
+      var niParent = T.val(['ProfitLossAttributableToOwnersOfParent', 'ProfitLossAttributableToOwnersOfParentIFRS'], ctx);
       var sgaAct = T.val(['SellingGeneralAndAdministrativeExpenses', 'SellingGeneralAndAdministrativeExpensesIFRS'], ctx);
       var opDerived = false;
       if (op === undefined && ifrs && pre !== undefined) {
@@ -189,7 +335,7 @@
       }
       if (rev === undefined || op === undefined || ni === undefined) return null;
       if (pre === undefined) pre = ord !== undefined ? ord : op;
-      var o = { opDerived: opDerived, rev: rev, gp: gp, cogs: gp !== undefined ? rev - gp : undefined, op: op, sga: gp !== undefined ? gp - op : rev - op, sgaAct: sgaAct, ni: ni, pre: pre, tax: pre - ni };
+      var o = { opDerived: opDerived, rev: rev, gp: gp, cogs: gp !== undefined ? rev - gp : undefined, op: op, sga: gp !== undefined ? gp - op : rev - op, sgaAct: sgaAct, ni: ni, niParent: niParent, pre: pre, tax: pre - ni };
       if (!ifrs && ord !== undefined) { o.nonop = ord - op; o.sp = pre - ord; o.ord = ord; }
       else { o.nonop = pre - op; o.sp = 0; o.ord = pre; }
       return o;
@@ -271,6 +417,7 @@
   var CUR_INST = ['CurrentYearInstant', 'InterimInstant', 'CurrentQuarterInstant', 'CurrentAccumulatedQ1Instant', 'CurrentAccumulatedQ2Instant', 'CurrentAccumulatedQ3Instant'];
 
   function extractBS(files, DP, meta) {
+    if (isUS(files)) return extractBSUS(files, DP, meta);
     var T = tools(files, DP), d = T.data;
     var ifrs = T.att.some(function (f) { return /^jpigp_cor_/.test(f.concept); });
     // 期末（今期）と前期末の時点
@@ -622,7 +769,8 @@
       if (P.ni >= 0) {
         var nT = 140, nH = Hf(P.ni), o = oT, ni0 = nT + inSum * k;
         flow(XO + NW, o, o + (P.ni - inSum) * k, XF, ni0, nT + P.ni * k, PAL.gnflow); o += (P.ni - inSum) * k;
-        var yNext = Math.max(262, nT + nH + 50);
+        var hasParentLine = has(P.niParent) && P.niParent !== P.ni;
+        var yNext = Math.max(hasParentLine ? 290 : 262, nT + nH + 50); // 「うち親会社株主」の行があるときは、その下に間をあける
         outs.forEach(function (a, i) {
           // 箱どうしが重ならないよう、前の箱の高さ＋すき間の下に置く
           var yT = yNext, v = a[1]; yNext = yT + Hf(v) + 52;
@@ -637,7 +785,8 @@
           lines(ix + 15, iyy - 52, [[a[0], ins.length > 1 ? 16 : 17, 700, GT], ['+' + fmt(v), ins.length > 1 ? 16 : 17, 700, GT]]);
         });
         node(XF, nT, nH, PAL.ni);
-        lines(XF + NW + 14, nT - 46, [['当期純利益', 30, 900, GT], [fmt(P.ni), 30, 700, GT], ['利益率 ' + rt(P.ni, P.rev).toFixed(1) + '%', 18, 500, M], [has(Pp.ni) ? pp(rt(P.ni, P.rev), rt(Pp.ni, Pp.rev)) : '', 18, 500, M]], 'start');
+        lines(XF + NW + 14, nT - 46, [['当期純利益', 30, 900, GT], [fmt(P.ni), 30, 700, GT], ['利益率 ' + rt(P.ni, P.rev).toFixed(1) + '%', 18, 500, M], [has(Pp.ni) ? pp(rt(P.ni, P.rev), rt(Pp.ni, Pp.rev)) : '', 18, 500, M]]
+          .concat(has(P.niParent) && P.niParent !== P.ni ? [['うち親会社株主 ' + (P.niParent < 0 ? '△' : '') + fmt(Math.abs(P.niParent)), 18, 700, GT]] : []), 'start');
       } else {
         // 営業利益は出たが、最後は純損失（雛形の形に合わせ、数字だけを示す）
         lines(XF - 60, 200, [['当期純損失', 30, 900, NEG], [(P.ni < 0 ? '△' : '') + fmt(Math.abs(P.ni)), 30, 700, NEG], ['利益率 ' + rts(P.ni, P.rev) + '%', 18, 500, M]], 'start');
