@@ -81,9 +81,13 @@ async function listDay(ymd) {
   return rows;
 }
 
-function periodOf(files) {
+function periodOf(files, title) {
   const d = TP._collect(files, DP);
+  const t = z2h(title || '');
   let fye = (d.summary.FiscalYearEnd || '').slice(0, 10);
+  // 訂正のお知らせなどサマリーがない開示は、題名の「2026年12月期 第2四半期」から期を読む
+  const tm = t.match(/(\d{4})年\s*(\d{1,2})月期/);
+  if (!/^\d{4}-\d{2}/.test(fye) && tm) fye = tm[1] + '-' + String(tm[2]).padStart(2, '0');
   if (!/^\d{4}-\d{2}/.test(fye)) {
     // 変則決算などで決算期の欄がないとき：当期の終わり（CurrentYear…）の日付を使う
     const c = d.contexts.CurrentYearInstant || d.contexts.CurrentYearDuration;
@@ -95,7 +99,12 @@ function periodOf(files) {
   }
   const qf = d.facts.find(f => f.summary && /_QuarterlyPeriod$/.test(f.concept));
   let q = qf ? qf.value : 4;
-  if (!qf) { const m = z2h(d.summary.DocumentName || '').match(/第\s*([1-3])\s*四半期/); if (m) q = +m[1]; }
+  if (!qf) { const m = (z2h(d.summary.DocumentName || '') || t).match(/第\s*([1-3])\s*四半期/) || t.match(/第\s*([1-3])\s*四半期/); if (m) q = +m[1]; }
+  // 訂正のお知らせは、題名に書かれた「どの期の短信の訂正か」を正とする
+  if (/訂正/.test(t) && tm) {
+    fye = tm[1] + '-' + String(tm[2]).padStart(2, '0');
+    const qm = t.match(/第\s*([1-3])\s*四半期/); q = qm ? +qm[1] : 4;
+  }
   return { fye, q, company: d.summary.CompanyName || '' };
 }
 
@@ -129,7 +138,7 @@ async function main() {
       const date = ymd.slice(0, 4) + '年' + (+ymd.slice(4, 6)) + '月' + (+ymd.slice(6)) + '日';
       const meta = { name: NAMES[code4] || r.name, code: code4, title: r.title, date };
       let per, pl, bs;
-      try { per = periodOf(files); } catch (e) { per = { fye: '', q: 4 }; }
+      try { per = periodOf(files, r.title); } catch (e) { per = { fye: '', q: 4 }; }
       try { pl = K.extractPL(files, DP, meta); } catch (e) { pl = { ok: false, reason: '読み取りで問題が起きました' }; }
       try { bs = K.extractBS(files, DP, meta); } catch (e) { bs = { ok: false, reason: '読み取りで問題が起きました' }; }
       if (!per.fye) { const m = z2h(r.title).match(/(\d{4})年\s*(\d{1,2})月期/); if (m) per.fye = m[1] + '-' + String(m[2]).padStart(2, '0'); }
@@ -145,7 +154,7 @@ async function main() {
       const co = readJSON(p, { code: code4, name: meta.name, docs: [] });
       co.name = meta.name;
       // 同じ期・同じ種類なら新しい開示（訂正を含む）で置き換える
-      co.docs = co.docs.filter(d => !(d.kind === doc.kind && d.fye === doc.fye && d.q === doc.q && (d.disclosed <= doc.disclosed || d.id === doc.id)));
+      co.docs = co.docs.filter(d => d.id !== doc.id && !(d.kind === doc.kind && d.fye === doc.fye && d.q === doc.q && d.disclosed <= doc.disclosed));
       if (!co.docs.some(d => d.kind === doc.kind && d.fye === doc.fye && d.q === doc.q)) co.docs.push(doc);
       co.docs.sort((a, b) => (b.fye + b.q).localeCompare(a.fye + a.q) || (a.kind === 'yuho' ? -1 : 1));
       co.updated = new Date().toISOString();
