@@ -111,7 +111,22 @@ function periodOf(files, title) {
 function fyLabel(fye) { const m = fye.match(/^(\d{4})-(\d{2})/); return m ? m[1] + '年' + (+m[2]) + '月期' : ''; }
 function qLabel(q) { return q === 4 ? '通期' : q === 2 ? '第2四半期（中間期）' : '第' + q + '四半期'; }
 
+// 目次：アプリが「データがある銘柄」を知るため（銘柄ごとのファイルから作り直す）
+function writeIndex() {
+  const index = {};
+  fs.readdirSync(COS).filter(f => f.endsWith('.json')).forEach(f => {
+    const co = readJSON(path.join(COS, f), null); if (!co || !co.docs.length) return;
+    const top = pickLatest(co.docs);
+    // [社名, 期の表示, 種類（短信/有報）, 開示日時, 決算期末, 四半期]
+    index[co.code] = [co.name, top ? top.label : '', top ? top.kind : '', top ? top.disclosed : '', top ? top.fye : '', top ? top.q : 4];
+  });
+  fs.writeFileSync(path.join(DATA, 'index.json'), JSON.stringify({ updated: new Date().toISOString(), companies: index }));
+  return Object.keys(index).length;
+}
+
 async function main() {
+  // --index-only：目次だけを作り直す（ほかの取り込みと重なったあとに、食い違いをなくすため）
+  if (process.argv.includes('--index-only')) { console.log('目次を作り直しました：', writeIndex(), '社'); return; }
   // --redo を付けると、取り込み済みの開示も読み直して上書きする（今ある数字は消さない）
   const redo = process.argv.includes('--redo');
   const args = process.argv.slice(2).filter(a => /^\d{8}$/.test(a));
@@ -164,15 +179,7 @@ async function main() {
     }
     fs.writeFileSync(seenPath, JSON.stringify([...seen]));
   }
-  // 目次：アプリが「データがある銘柄」を知るため
-  const index = {};
-  fs.readdirSync(COS).filter(f => f.endsWith('.json')).forEach(f => {
-    const co = readJSON(path.join(COS, f), null); if (!co || !co.docs.length) return;
-    const top = pickLatest(co.docs);
-    // [社名, 期の表示, 種類（短信/有報）, 開示日時, 決算期末, 四半期]
-    index[co.code] = [co.name, top ? top.label : '', top ? top.kind : '', top ? top.disclosed : '', top ? top.fye : '', top ? top.q : 4];
-  });
-  fs.writeFileSync(path.join(DATA, 'index.json'), JSON.stringify({ updated: new Date().toISOString(), companies: index }));
+  const nIndex = writeIndex();
   console.log('追加', added, '件／一部読めず', failed, '件／銘柄数', Object.keys(index).length);
 }
 

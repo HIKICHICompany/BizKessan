@@ -54,6 +54,10 @@ jobs:
           else
             git commit -m "決算データ更新 $(TZ=Asia/Tokyo date +%Y-%m-%d)"
             git pull --rebase -X theirs origin main
+            # 同じ時間に動いた別の取り込みと重なっても、目次は最新の銘柄ファイルから作り直す
+            (cd pipeline && node fetch.js --index-only)
+            git add data/index.json
+            git diff --cached --quiet || git commit -m "目次の作り直し $(TZ=Asia/Tokyo date +%Y-%m-%d)"
             git push
           fi
 
