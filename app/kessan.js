@@ -645,7 +645,7 @@
       add: function (s) { out.push(s); },
       text: function (x, y, t, o) {
         o = o || {};
-        out.push('<text x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" text-anchor="' + (o.anchor || 'middle') + '" font-size="' + o.size + '" font-weight="' + (o.weight || 500) + '" fill="' + (o.fill || PAL.fg) + '">' + esc(t) + '</text>');
+        out.push('<text x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" text-anchor="' + (o.anchor || 'middle') + '" font-size="' + o.size + '" font-weight="' + (o.weight || 500) + '" fill="' + (o.fill || PAL.fg) + '"' + (o.halo ? ' stroke="#ffffff" stroke-width="7" stroke-linejoin="round" paint-order="stroke"' : '') + '>' + esc(t) + '</text>');
       },
       done: function () {
         return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" font-family="' + esc(FONT) + '"><rect width="' + W + '" height="' + H + '" fill="#ffffff"/>' + out.join('') + '</svg>';
@@ -685,7 +685,7 @@
     function node(x, y, h, c) { ad('rect', { x: x, y: y, width: NW, height: h, fill: c }); }
     function lines(x, y, arr, anchor) {
       var yy = y;
-      arr.forEach(function (a) { yy += a[1] * 1.22; if (!a[0]) return; var p = T(x, yy); B.text(p[0], p[1], a[0], { size: a[1], weight: a[2] || 500, fill: a[3] || PAL.fg, anchor: anchor || 'middle' }); });
+      arr.forEach(function (a) { yy += a[1] * 1.22; if (!a[0]) return; var p = T(x, yy); B.text(p[0], p[1], a[0], { size: a[1], weight: a[2] || 500, fill: a[3] || PAL.fg, anchor: anchor || 'middle', halo: a[4] }); });
     }
     var M = PAL.muted, GT = PAL.ord, NEG = PAL.neg;
     var ttl = cfg.name + '（' + cfg.code + '）' + (opt && opt.period ? '　' + opt.period : '');
@@ -785,10 +785,10 @@
       // 販管費の箱は、流れが平らな線にならないよう、出どころより少し下に置く（下にはみ出さない範囲で）
       var sT = Math.min(Math.max(440, oT + oH + 60, gCut + 90), Math.max(440, oT + oH + 60, 850 - sH - 110)); // 下の欄にかからない高さまで
       // 販管費の見出し（箱の右）が営業利益の見出しの下に来るよう、箱の中心をそろえて置く
-      if (preMode) sT = Math.min(Math.max(oT + oH + 50, oT + oH + 116 + 62 - sH / 2), 850 - sH);
+      if (preMode) sT = Math.min(oT + oH + 185, 850 - sH); // 営業利益の見出し（箱の真下）のさらに下に置く
       flow(XSRC + NW, gT, gCut, XO, oT, oT + oH, PAL.gnflow); flow(XSRC + NW, gCut, gT + gH, XO, sT, sT + sH, PAL.sgaflow);
       node(XO, oT, oH, PAL.op); node(XO, sT, sH, PAL.sga);
-      if (preMode) lines(XO + NW + 14, oT + oH - 4, [['営業利益', 28, 900, GT], [fmt(P.op), 28, 700, GT], ['利益率 ' + rt(P.op, P.rev).toFixed(1) + '%', 17, 500, M], [has(Pp.op) ? pp(rt(P.op, P.rev), rt(Pp.op, Pp.rev)) : '', 17, 500, M]], 'start');
+      if (preMode) lines(XO + NW / 2, oT + oH + 2, [['営業利益', 28, 900, GT], [fmt(P.op), 28, 700, GT], ['利益率 ' + rt(P.op, P.rev).toFixed(1) + '%', 17, 500, M], [has(Pp.op) ? pp(rt(P.op, P.rev), rt(Pp.op, Pp.rev)) : '', 17, 500, M]]);
       else lines(XO + NW / 2, oT - 150, [['営業利益', 32, 900, GT], [fmt(P.op), 32, 700, GT], ['利益率 ' + rt(P.op, P.rev).toFixed(1) + '%', 19, 500, M], [has(Pp.op) ? pp(rt(P.op, P.rev), rt(Pp.op, Pp.rev)) : '', 19, 500, M]]);
       var sgaLines = [[SGAN, 30, 900, PAL.sga], ['(' + fmt(P.sga) + ')', 28, 700, PAL.sga], ['売上の' + rt(P.sga, P.rev).toFixed(1) + '%', 18, 500, M]].concat(cfg.sgaNote ? [[cfg.sgaNote, 15, 500, M]] : []);
       // この形では販管費の見出しを箱の右に置き、図が下に伸びないようにする
@@ -796,7 +796,9 @@
       else lines(XO + NW / 2, sT + sH + 8, sgaLines);
       if (preMode) {
         // 営業利益（上）と本業以外の利益（営業利益の箱の下に並べる）を、税引前利益の箱に集める
-        var XP = XPcol, PW = 36, pT = 140, pV = P.op + inSum, pH = pV * k;
+        var XP = XPcol, PW = 36, pV = P.op + inSum, pH = pV * k;
+        // 税引前利益の箱は、入ってくる箱（本業以外の利益と営業利益）の中ほどより下げて置き、流れをくねらせる
+        var pT = Math.max(140, Math.min((insTops[0] + oT + oH) / 2 - pH / 2 + 80, 760 - pH));
         // 箱の名前：引くものが税金だけなら税引前利益、日本基準で特別損失も引くなら経常利益、それ以外は利益の合計
         var onlyTax = outs.every(function (a) { return a[0] === TAXN; });
         var preName = ins.some(function (a) { return a[0] === '税金の戻り'; }) || P.disc ? '利益の合計'
@@ -813,9 +815,9 @@
         });
         flow(XO + NW, oT, oT + P.op * k, XP, py, py + P.op * k, PAL.gnflow);
         ad('rect', { x: XP, y: pT, width: PW, height: pH, fill: PAL.op });
-        lines(XP + PW / 2, pT - 66, [[preName, 24, 900, GT], [fmt(pV), 24, 700, GT]]);
+        lines(XP + PW / 2, pT - 66, [[preName, 24, 900, GT, 1], [fmt(pV), 24, 700, GT, 1]]); // 白いふちで、帯の上でも読めるように
         // 税引前利益 → 当期純利益（上）・税金など（下）
-        var nT2 = pT, nH2 = Hf(P.ni), op2 = pT;
+        var nT2 = 140, nH2 = Hf(P.ni), op2 = pT; // 純利益の箱は上に残し、税引前利益から上がっていく流れにする
         flow(XP + PW, op2, op2 + P.ni * k, XF, nT2, nT2 + nH2, PAL.gnflow); op2 += P.ni * k;
         var yN2 = Math.max(has(P.niParent) && P.niParent !== P.ni ? 290 : 262, nT2 + nH2 + 50);
         outs.forEach(function (a) {
