@@ -696,6 +696,12 @@
     var SC = 0.93, scX = W / 2, scY = OY + 110;
     B.add('<g transform="translate(' + scX + ' ' + scY + ') scale(' + SC + ') translate(' + (-scX) + ' ' + (-scY) + ')">');
     var XS = 305, XR = 610, XG = 900, XO = 1180, XF = 1455; // 左右の余白がそろう幅
+    // 税引前利益の箱が入る形（本業以外の利益が純利益より大きい）は、列が1つ増えるので、すべての列を同じ間隔に並べ直す
+    var XPcol = XO + NW + 96;
+    if (P.op >= 0 && P.ni >= 0 && inAll > P.ni) {
+      var cols = has(P.gp) ? 6 : 5, step = (XF - XS) / (cols - 1), ci = 1;
+      XR = XS + step * ci++; if (has(P.gp)) XG = XS + step * ci++; XO = XS + step * ci++; XPcol = XS + step * ci++;
+    }
     var rT = 300, rB = rT + P.rev * k;
     // セグメント
     // 注記と出典は左下の枠（売上原価のラベルにかからない幅）に、下から積む
@@ -790,7 +796,7 @@
       else lines(XO + NW / 2, sT + sH + 8, sgaLines);
       if (preMode) {
         // 営業利益（上）と本業以外の利益（営業利益の箱の下に並べる）を、税引前利益の箱に集める
-        var XP = XO + NW + 96, PW = 36, pT = 140, pV = P.op + inSum, pH = pV * k;
+        var XP = XPcol, PW = 36, pT = 140, pV = P.op + inSum, pH = pV * k;
         // 箱の名前：引くものが税金だけなら税引前利益、日本基準で特別損失も引くなら経常利益、それ以外は利益の合計
         var onlyTax = outs.every(function (a) { return a[0] === TAXN; });
         var preName = ins.some(function (a) { return a[0] === '税金の戻り'; }) || P.disc ? '利益の合計'
@@ -807,7 +813,7 @@
         });
         flow(XO + NW, oT, oT + P.op * k, XP, py, py + P.op * k, PAL.gnflow);
         ad('rect', { x: XP, y: pT, width: PW, height: pH, fill: PAL.op });
-        lines(XP + PW / 2, pT - 64, [[preName, 20, 900, GT], [fmt(pV), 20, 700, GT]]);
+        lines(XP + PW / 2, pT - 66, [[preName, 24, 900, GT], [fmt(pV), 24, 700, GT]]);
         // 税引前利益 → 当期純利益（上）・税金など（下）
         var nT2 = pT, nH2 = Hf(P.ni), op2 = pT;
         flow(XP + PW, op2, op2 + P.ni * k, XF, nT2, nT2 + nH2, PAL.gnflow); op2 += P.ni * k;
