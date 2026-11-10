@@ -769,17 +769,25 @@
       // 本業以外の利益が当期純利益より大きいとき（例：大きな売却益や持分法の利益）は、
       // 営業利益と本業以外の利益をいったん「税引前利益」の箱に集めてから、純利益と税金に分ける
       var preMode = P.ni >= 0 && inSum > P.ni;
-      var insTop = oT + oH + 34, insBottom = insTop;
-      // 箱が小さくても、2行の見出しが重ならない間をとる
-      var insStep = function (v) { return Math.max(Hf(v) + 34, 58); };
-      if (preMode) ins.forEach(function (a) { insBottom += insStep(a[1]); });
+      // この形では、本業以外の利益の箱を上に積み、営業利益の箱はその下に下げる（流れが交わらない）
+      var insTops = [];
+      if (preMode) {
+        var yy0 = 150;
+        ins.forEach(function (a) { insTops.push(yy0); yy0 += Hf(a[1]) + 84; }); // 箱の上に2行の見出しが入る間
+        oT = yy0 - 84 + 50; // 最後の箱のすぐ下（見出しは箱の右下に置く）
+      }
       // 販管費の箱は、流れが平らな線にならないよう、出どころより少し下に置く（下にはみ出さない範囲で）
       var sT = Math.min(Math.max(440, oT + oH + 60, gCut + 90), Math.max(440, oT + oH + 60, 850 - sH - 110)); // 下の欄にかからない高さまで
-      if (preMode) sT = Math.max(sT, insBottom + 40); // 本業以外の利益の箱の下に置く
+      // 販管費の見出し（箱の右）が営業利益の見出しの下に来るよう、箱の中心をそろえて置く
+      if (preMode) sT = Math.min(Math.max(oT + oH + 50, oT + oH + 116 + 62 - sH / 2), 850 - sH);
       flow(XSRC + NW, gT, gCut, XO, oT, oT + oH, PAL.gnflow); flow(XSRC + NW, gCut, gT + gH, XO, sT, sT + sH, PAL.sgaflow);
       node(XO, oT, oH, PAL.op); node(XO, sT, sH, PAL.sga);
-      lines(XO + NW / 2, oT - 150, [['営業利益', 32, 900, GT], [fmt(P.op), 32, 700, GT], ['利益率 ' + rt(P.op, P.rev).toFixed(1) + '%', 19, 500, M], [has(Pp.op) ? pp(rt(P.op, P.rev), rt(Pp.op, Pp.rev)) : '', 19, 500, M]]);
-      lines(XO + NW / 2, sT + sH + 8, [[SGAN, 30, 900, PAL.sga], ['(' + fmt(P.sga) + ')', 28, 700, PAL.sga], ['売上の' + rt(P.sga, P.rev).toFixed(1) + '%', 18, 500, M]].concat(cfg.sgaNote ? [[cfg.sgaNote, 15, 500, M]] : []));
+      if (preMode) lines(XO + NW + 14, oT + oH - 4, [['営業利益', 28, 900, GT], [fmt(P.op), 28, 700, GT], ['利益率 ' + rt(P.op, P.rev).toFixed(1) + '%', 17, 500, M], [has(Pp.op) ? pp(rt(P.op, P.rev), rt(Pp.op, Pp.rev)) : '', 17, 500, M]], 'start');
+      else lines(XO + NW / 2, oT - 150, [['営業利益', 32, 900, GT], [fmt(P.op), 32, 700, GT], ['利益率 ' + rt(P.op, P.rev).toFixed(1) + '%', 19, 500, M], [has(Pp.op) ? pp(rt(P.op, P.rev), rt(Pp.op, Pp.rev)) : '', 19, 500, M]]);
+      var sgaLines = [[SGAN, 30, 900, PAL.sga], ['(' + fmt(P.sga) + ')', 28, 700, PAL.sga], ['売上の' + rt(P.sga, P.rev).toFixed(1) + '%', 18, 500, M]].concat(cfg.sgaNote ? [[cfg.sgaNote, 15, 500, M]] : []);
+      // この形では販管費の見出しを箱の右に置き、図が下に伸びないようにする
+      if (preMode) lines(XO + NW + 16, sT + sH / 2 - 62, sgaLines, 'start');
+      else lines(XO + NW / 2, sT + sH + 8, sgaLines);
       if (preMode) {
         // 営業利益（上）と本業以外の利益（営業利益の箱の下に並べる）を、税引前利益の箱に集める
         var XP = XO + NW + 96, PW = 36, pT = 140, pV = P.op + inSum, pH = pV * k;
@@ -788,15 +796,16 @@
         var preName = ins.some(function (a) { return a[0] === '税金の戻り'; }) || P.disc ? '利益の合計'
           : onlyTax ? '税引前利益'
           : !cfg.ifrs && P.sp <= 0 && P.nonop > 0 && outs.every(function (a) { return a[0] === TAXN || a[0] === '特別損失'; }) ? '経常利益' : '利益の合計';
-        flow(XO + NW, oT, oT + P.op * k, XP, pT, pT + P.op * k, PAL.gnflow);
-        var py = pT + P.op * k, iy2 = insTop;
-        ins.forEach(function (a) {
-          var v = a[1], h = Hf(v);
+        // 税引前利益の箱の上の部分に本業以外の利益、下の部分に営業利益が入る
+        var py = pT;
+        ins.forEach(function (a, i) {
+          var v = a[1], h = Hf(v), iy2 = insTops[i];
           ad('rect', { x: XO, y: iy2, width: NW, height: h, fill: PAL.op });
           flow(XO + NW, iy2, iy2 + v * k, XP, py, py + v * k, PAL.gnflow);
-          lines(XO - 12, iy2 + h / 2 - 34, [[a[0], 20, 900, GT], ['+' + fmt(v), 20, 700, GT]], 'end');
-          py += v * k; iy2 += insStep(v);
+          lines(XO + NW / 2, iy2 - 64, [[a[0], 24, 900, GT], ['+' + fmt(v), 24, 700, GT]]);
+          py += v * k;
         });
+        flow(XO + NW, oT, oT + P.op * k, XP, py, py + P.op * k, PAL.gnflow);
         ad('rect', { x: XP, y: pT, width: PW, height: pH, fill: PAL.op });
         lines(XP + PW / 2, pT - 64, [[preName, 20, 900, GT], [fmt(pV), 20, 700, GT]]);
         // 税引前利益 → 当期純利益（上）・税金など（下）
