@@ -180,7 +180,7 @@ async function main() {
     fs.writeFileSync(seenPath, JSON.stringify([...seen]));
   }
   const nIndex = writeIndex();
-  console.log('追加', added, '件／一部読めず', failed, '件／銘柄数', Object.keys(index).length);
+  console.log('追加', added, '件／一部読めず', failed, '件／銘柄数', nIndex);
 }
 
 // 最新の期を選ぶ：期が新しいものを優先。同じ期なら有報を短信より優先
