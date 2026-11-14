@@ -1,0 +1,45 @@
+name: 合言葉の取り出し（暗号化して出す）
+
+# 公開リポジトリでも合言葉が人に見えないよう、渡された公開鍵で暗号化した文字だけを記録に出す。
+# 開けられるのは、対になる秘密鍵を持つ人だけ。
+on:
+  workflow_dispatch:
+    inputs:
+      pubkey:
+        description: '公開鍵（PEMをbase64にした1行）'
+        required: true
+      months:
+        description: '何か月分出すか（今月から）'
+        required: false
+        default: '14'
+
+permissions:
+  contents: read
+
+jobs:
+  reveal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 合言葉を暗号化して出す
+        env:
+          PASS_SECRET: ${{ secrets.PASS_SECRET }}
+          PUBKEY: ${{ inputs.pubkey }}
+          MONTHS: ${{ inputs.months }}
+        run: |
+          if [ -z "$PASS_SECRET" ]; then echo "PASS_SECRET がありません"; exit 1; fi
+          printf '%s' "$PUBKEY" | base64 -d > "$RUNNER_TEMP/pub.pem"
+          node -e '
+            const n = Math.min(+process.env.MONTHS || 14, 24);
+            const d = new Date(Date.now() + 9 * 3600e3); let y = d.getUTCFullYear(), m = d.getUTCMonth() + 1;
+            for (let i = 0; i < n; i++) { console.log(y + "-" + String(m).padStart(2, "0")); if (++m > 12) { m = 1; y++; } }
+          ' > "$RUNNER_TEMP/months.txt"
+          while read ym; do echo "$ym $(node pipeline/passcode.js "$ym")"; done < "$RUNNER_TEMP/months.txt" > "$RUNNER_TEMP/codes.txt"
+          echo "----- ここから暗号 -----"
+          openssl pkeyutl -encrypt -pubin -inkey "$RUNNER_TEMP/pub.pem" -pkeyopt rsa_padding_mode:oaep -in "$RUNNER_TEMP/codes.txt" | base64 -w0
+          echo; echo "----- ここまで -----"
+          rm -f "$RUNNER_TEMP/codes.txt"
