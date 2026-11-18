@@ -658,10 +658,43 @@
     var W = 1780, Hh = 1060, OX = 30, OY = 20;
     var B = svgBuilder(W, Hh);
     var P = cfg.cur, Pp = cfg.prev || {}, segs = cfg.segments || [], U = cfg.unit;
+    // 粗利がマイナス（売上原価が売上より大きい）の会社は、売上原価と販管費をまとめて「営業費用」として描く
+    var grossLoss = P.op < 0 && P.gp !== undefined && P.gp !== null && P.gp <= 0;
+    if (grossLoss) P = Object.assign({}, P, { sga: P.sga + P.cogs, gp: undefined, cogs: undefined });
     var k = 360 / P.rev, NW = 44;
     // 本業以外の利益がとても大きい会社（売上より大きい売却益など）は、図が下にはみ出さないよう全体の縮尺を下げる
     var inAll = Math.max(P.nonop || 0, 0) + Math.max(P.sp || 0, 0) + Math.max(-(P.tax || 0), 0);
     if (P.op >= 0 && P.ni >= 0 && inAll > P.ni) k = Math.min(k, 380 / (P.op + inAll));
+    // 営業損失の形：販管費の箱と、その下の営業損失・純損失の箱が、下にはみ出さないよう縮尺を下げる
+    // 営業損失の形の、左（穴を埋める側）と右下（ほかに出ていく先）の箱
+    var LS = [], LU = [];
+    if (P.op < 0) {
+      if (P.ni < 0) LS.push({ n: '当期純損失', v: -P.ni, main: 1 });
+      if (P.nonop > 0) LS.push({ n: 'NONOP', v: P.nonop });
+      if (P.sp > 0) LS.push({ n: 'SPG', v: P.sp });
+      if (P.tax < 0) LS.push({ n: '税金の戻り', v: -P.tax });
+      if (P.ni > 0) LU.push({ n: '当期純利益', v: P.ni, ni: 1 });
+      if (P.tax > 0) LU.push({ n: 'TAX', v: P.tax });
+      if (P.nonop < 0) LU.push({ n: 'NONOP', v: -P.nonop });
+      if (P.sp < 0) LU.push({ n: 'SPL', v: -P.sp });
+    }
+    // 箱の見出しの高さ（左は箱の下、右は箱の横）
+    var lsLab = function (a) { return a.main ? 112 : 56; }, luLab = function (a) { return a.ni ? 110 : 30; };
+    // 営業損失の形の図の下の端（この縮尺で描いたとき）
+    function lossBottom(kk) {
+      var hf = function (v) { return Math.max(Math.abs(v) * kk, 2.5); };
+      var g0 = (P.gp !== undefined && P.gp !== null) ? 230 : 300, gh = ((P.gp !== undefined && P.gp !== null) ? P.gp : P.rev) * kk;
+      var s0 = g0 + 40, opT0 = s0 + gh + 140, y = opT0 + 60;
+      LS.forEach(function (a) { y += hf(a.v) + 8 + lsLab(a) + 18; });
+      var u = Math.max(s0 + P.sga * kk + 60, opT0 + hf(-P.op) + 80);
+      LU.forEach(function (a) { u += Math.max(hf(a.v) + 30, luLab(a)); });
+      return Math.max(y - 18, u, s0 + P.sga * kk + 20);
+    }
+    if (P.op < 0 && lossBottom(k) > 800) {
+      var lo = k * 0.02, hi = k;
+      for (var it = 0; it < 30; it++) { var mid = (lo + hi) / 2; if (lossBottom(mid) > 800) hi = mid; else lo = mid; }
+      k = lo;
+    }
     var Hf = function (v) { return Math.max(Math.abs(v) * k, 2.5); };
     var fmt = function (v) { return Math.round(v / U.div).toLocaleString('ja-JP'); };
     var has = function (x) { return x !== undefined && x !== null && !isNaN(x); };
@@ -701,6 +734,11 @@
     if (P.op >= 0 && P.ni >= 0 && inAll > P.ni) {
       var cols = has(P.gp) ? 6 : 5, step = (XF - XS) / (cols - 1), ci = 1;
       XR = XS + step * ci++; if (has(P.gp)) XG = XS + step * ci++; XO = XS + step * ci++; XPcol = XS + step * ci++;
+    }
+    var XN = 0, XL = 0;
+    if (P.op < 0) {
+      var colsL = has(P.gp) ? 6 : 5, stepL = (XF - XS) / (colsL - 1), cj = 1;
+      XR = XS + stepL * cj++; if (has(P.gp)) XG = XS + stepL * cj++; XN = XS + stepL * cj++; XL = XS + stepL * cj++;
     }
     var rT = 300, rB = rT + P.rev * k;
     // セグメント
@@ -765,7 +803,7 @@
     lines(XG + NW / 2, gT - 150, [['売上総利益', 32, 900, GT], [fmt(P.gp), 32, 700, GT], ['粗利率 ' + rt(P.gp, P.rev).toFixed(1) + '%', 19, 500, M], [has(Pp.gp) ? pp(rt(P.gp, P.rev), rt(Pp.gp, Pp.rev)) : '', 19, 500, M]]);
     lines(XG + NW / 2, cT + cH + 6, [['売上原価', 30, 900], ['(' + fmt(P.cogs) + ')', 28, 700], ['売上の' + rt(P.cogs, P.rev).toFixed(1) + '%', 18, 500, M], [has(Pp.cogs) ? pp(rt(P.cogs, P.rev), rt(Pp.cogs, Pp.rev)) : '', 18, 500, M]]);
     }
-    var SGAN = cfg.sgaName, NONOPN = cfg.nonopName, TAXN = cfg.ifrs ? '法人所得税' : '法人税等';
+    var SGAN = grossLoss ? '営業費用' : cfg.sgaName, NONOPN = cfg.nonopName, TAXN = cfg.ifrs ? '法人所得税' : '法人税等';
     if (P.op >= 0) {
       var oT = 170, oH = Hf(P.op), sH = P.sga * k, gCut = gT + P.op * k;
       // 営業利益 → 当期純利益・税金・営業外や特別の損失（利益の流入は上から入れる）
@@ -854,37 +892,55 @@
         lines(XF - 60, 200, [['当期純損失', 30, 900, NEG], [(P.ni < 0 ? '△' : '') + fmt(Math.abs(P.ni)), 30, 700, NEG], ['利益率 ' + rts(P.ni, P.rev) + '%', 18, 500, M]], 'start');
       }
     } else {
-      // 営業損失：売上総利益のすべてと、足りない分（営業損失）が販管費に流れる
-      var sT2 = 300, sH2 = P.sga * k, lossH = -P.op * k;
-      flow(XSRC + NW, gT, gT + gH, XO, sT2, sT2 + gH, PAL.sgaflow);
-      // 売上総利益がない形では、営業費用の流れと重ならないよう、営業損失の箱を費用の箱の左下に置く
-      var lx = noGP ? XO - 150 : XG + 120, ly = noGP ? Math.min(sT2 + sH2 + 40, 800) : 600;
-      ad('rect', { x: lx, y: ly, width: 26, height: Math.max(lossH, 3), fill: NEG });
-      flow(lx + 26, ly, ly + lossH, XO, sT2 + gH, sT2 + sH2, PAL.negflow);
-      lines(noGP ? lx - 12 : lx + 40, ly - 14, [['営業損失', 26, 900, NEG], ['(' + fmt(-P.op) + ')', 26, 700, NEG], ['利益率 ' + rts(P.op, P.rev) + '%', 17, 500, M], [has(Pp.op) && has(Pp.rev) ? '前期は ' + rts(Pp.op, Pp.rev) + '%' : '', 17, 500, M]], noGP ? 'end' : 'start');
-      node(XO, sT2, sH2, PAL.sga);
-      // 販管費の名前は箱の下に（右側は本業以外の利益の流れに使う）
-      lines(XO + NW / 2, sT2 + sH2 + 8, [[SGAN, 30, 900, PAL.sga], ['(' + fmt(P.sga) + ')', 28, 700, PAL.sga], ['売上の' + rt(P.sga, P.rev).toFixed(1) + '%', 18, 500, M]].concat(cfg.sgaNote ? [[cfg.sgaNote, 15, 500, M]] : []));
-      // 本業以外の利益 → 当期純利益・税金・営業損失の穴埋め
-      var niIn = { label: NONOPN, value: Math.max(P.nonop, 0) }, siIn = { label: P.disc ? '非継続事業の利益' : '特別利益', value: Math.max(P.sp, 0) }, inTot = niIn.value + siIn.value;
-      if (inTot > 0 && P.ni > 0) {
-        var IX = XO + NW + 122, IY = 130, h1 = niIn.value * k, h2 = siIn.value * k;
-        ad('rect', { x: IX, y: IY, width: 30, height: h1, fill: PAL.op });
-        ad('rect', { x: IX, y: IY + h1, width: 30, height: h2, fill: PAL.gnflow, stroke: PAL.op, 'stroke-width': 1 });
-        lines(IX - 6, IY - 66, [[niIn.value ? niIn.label + ' +' + fmt(niIn.value) : '', 19, 900, GT], [siIn.value ? siIn.label + ' +' + fmt(siIn.value) : '', 19, 900, GT]]);
-        var outs2 = [['当期純利益', P.ni, PAL.ni, PAL.gnflow, GT, 100], [TAXN, P.tax, PAL.cogs, PAL.cogsflow, PAL.fg, 190], ['営業損失の穴埋め', -P.op, NEG, PAL.negflow, NEG, 260], ['営業外費用・特別損失', inTot - P.ni - P.tax + P.op, PAL.cogs, PAL.cogsflow, PAL.fg, 330]].filter(function (a) { return a[1] > 0; });
-        var o2 = IY, yNext2 = 100;
-        outs2.forEach(function (a) {
-          // 箱が大きくても重ならないよう、上から順に積む
-          var lab = a[0], v = a[1], h = v * k, yT = yNext2; yNext2 = yT + Hf(v) + (lab === '当期純利益' ? 100 : 44);
-          flow(IX + 30, o2, o2 + h, XF, yT, yT + Hf(v), a[3]); o2 += h; node(XF, yT, Hf(v), a[2]);
-          if (lab === '当期純利益') lines(XF + NW + 14, yT - 46, [['当期純利益', 30, 900, a[4]], [fmt(v), 30, 700, a[4]], ['利益率 ' + rts(P.ni, P.rev) + '%', 18, 500, M], [has(Pp.ni) ? '前期は ' + rts(Pp.ni, Pp.rev) + '%' : '', 18, 500, M]], 'start');
-          else lines(XF + NW + 14, yT - 16, [[lab + ' (' + fmt(v) + ')', 19, 900, a[4]]], 'start');
-        });
-        lines(XF + NW + 14, yNext2 - 30, [['本業以外の利益 ' + fmt(inTot) + ' の行き先', 15, 500, M]], 'start');
-      } else {
-        lines(XF - 60, 200, [['当期純損益', 30, 900, P.ni < 0 ? NEG : GT], [(P.ni < 0 ? '△' : '') + fmt(Math.abs(P.ni)), 30, 700, P.ni < 0 ? NEG : GT]], 'start');
-      }
+      // 営業損失の形：販管費の箱を右端の列に寄せ、売上総利益と「足りない分（営業損失）」が流れ込む。
+      // 営業損失の箱は販管費の左下、その穴を埋める当期純損失（と本業以外の利益）はさらに左に置く
+      var XSG = XF, opL = -P.op, sT2 = gT + 40, sH2 = P.sga * k;
+      flow(XSRC + NW, gT, gT + gH, XSG, sT2, sT2 + gH, PAL.sgaflow);
+      node(XSG, sT2, sH2, PAL.sga);
+      var sgaL = [[SGAN, 30, 900, PAL.sga], ['(' + fmt(P.sga) + ')', 28, 700, PAL.sga], ['売上の' + rt(P.sga, P.rev).toFixed(1) + '%', 18, 500, M]]
+        .concat((grossLoss ? wrapSoft('売上原価 ' + fmt(cfg.cur.cogs) + '＋販管費 ' + fmt(cfg.cur.sga), 16) : cfg.sgaNote ? wrapSoft(cfg.sgaNote.replace('＋', ' ＋'), 16) : []).map(function (t) { return [t, 15, 500, M]; }));
+      lines(XSG + NW + 14, sT2 + sH2 / 2 - 62, sgaL, 'start');
+      // 営業損失の箱（見出しは箱の上）
+      var opT = sT2 + gH + 140, opH = Hf(opL);
+      node(XL, opT, opH, NEG);
+      flow(XL + NW, opT, opT + opL * k, XSG, sT2 + gH, sT2 + gH + opL * k, PAL.negflow);
+      lines(XL + NW / 2, opT - 118, [['営業損失', 26, 900, NEG], ['(' + fmt(opL) + ')', 26, 700, NEG], ['利益率 ' + rts(P.op, P.rev) + '%', 17, 500, M], [has(Pp.op) && has(Pp.rev) ? '前期は ' + rts(Pp.op, Pp.rev) + '%' : '', 17, 500, M]]);
+      // 穴を埋める側（左）と、ほかに出ていく先（右下）
+      var NM = { NONOP: NONOPN, SPG: P.disc ? '非継続事業の利益' : '特別利益', SPL: P.disc ? '非継続事業の損失' : '特別損失', TAX: TAXN };
+      var srcs = LS.map(function (a) { return Object.assign({}, a, { n: NM[a.n] || a.n }); });
+      var uses = LU.map(function (a) { return Object.assign({}, a, { n: NM[a.n] || a.n }); });
+      // 左の箱：営業損失の箱より少し下から積む（見出しは箱の下）
+      var sy0 = opT + 60;
+      srcs.forEach(function (a) {
+        a.y = sy0; a.h = Hf(a.v);
+        node(XN, a.y, a.h, a.main ? NEG : PAL.op);
+        var lab = a.main
+          ? [['当期純損失', 26, 900, NEG], ['△' + fmt(a.v), 26, 700, NEG], ['利益率 ' + rts(P.ni, P.rev) + '%', 17, 500, M], [has(Pp.ni) && has(Pp.rev) ? '前期は ' + rts(Pp.ni, Pp.rev) + '%' : '', 17, 500, M]]
+          : [[a.n, 20, 900, GT], ['+' + fmt(a.v), 20, 700, GT]];
+        lines(XN + NW / 2, a.y + a.h + 4, lab);
+        sy0 += a.h + 8 + lsLab(a) + 18;
+      });
+      // 右下の箱：販管費の箱の下、営業損失の箱より下に積む（見出しは箱の右）
+      var uy0 = Math.max(sT2 + sH2 + 60, opT + opH + 80);
+      uses.forEach(function (a) {
+        a.y = uy0; a.h = Hf(a.v); var lh = luLab(a);
+        node(XSG, a.y, a.h, a.ni ? PAL.ni : PAL.cogs);
+        if (a.ni) lines(XSG + NW + 14, a.y - 10, [['当期純利益', 26, 900, GT], [fmt(a.v), 26, 700, GT], ['利益率 ' + rts(P.ni, P.rev) + '%', 17, 500, M]], 'start');
+        else lines(XSG + NW + 14, a.y + a.h / 2 - 26, [[a.n + ' (' + fmt(a.v) + ')', 19, 900]], 'start');
+        uy0 += Math.max(a.h + 30, lh);
+      });
+      // 左の箱から、まず営業損失へ、残りを右下の箱へ（上から順に割り当てるので流れが交わらない）
+      var tg = [{ x: XL, y: opT, v: opL }].concat(uses.map(function (a) { return { x: XSG, y: a.y, v: a.v }; }));
+      var ti = 0, tUsed = 0;
+      srcs.forEach(function (a) {
+        var left = a.v, sUsed = 0;
+        while (left > 1e-9 && ti < tg.length) {
+          var t = tg[ti], take = Math.min(left, t.v - tUsed);
+          if (take > 0) flow(XN + NW, a.y + sUsed * k, a.y + (sUsed + take) * k, t.x, t.y + tUsed * k, t.y + (tUsed + take) * k, a.main ? PAL.negflow : PAL.gnflow);
+          left -= take; sUsed += take; tUsed += take;
+          if (t.v - tUsed <= 1e-9) { ti++; tUsed = 0; }
+        }
+      });
     }
     B.add('</g>');
     // 下の欄：左に出典と「美図決算：…」（題名と同じ大きさ）、右に開示日・©・note
