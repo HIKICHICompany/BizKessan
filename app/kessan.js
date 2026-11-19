@@ -690,6 +690,20 @@
       LU.forEach(function (a) { u += Math.max(hf(a.v) + 30, luLab(a)); });
       return Math.max(y - 18, u, s0 + P.sga * kk + 20);
     }
+    // 営業利益は出たが純損失の形：右の行き先の箱と、左下の純損失などの箱が、下にはみ出さないよう
+    function niLossBottom(kk) {
+      var hf = function (v) { return Math.max(Math.abs(v) * kk, 2.5); };
+      var u = 140, y = 170 + hf(P.op) + 70;
+      [P.tax, -P.nonop, -P.sp].forEach(function (v) { if (v > 0) u += hf(v) + 52; });
+      [P.nonop, P.sp, -P.tax].forEach(function (v) { if (v > 0) y += hf(v) + 8 + 56 + 18; });
+      y += hf(-P.ni) + 8 + 112;
+      return Math.max(u, y);
+    }
+    if (P.op >= 0 && P.ni < 0 && niLossBottom(k) > 800) {
+      var lo2 = k * 0.02, hi2 = k;
+      for (var it2 = 0; it2 < 30; it2++) { var mid2 = (lo2 + hi2) / 2; if (niLossBottom(mid2) > 800) hi2 = mid2; else lo2 = mid2; }
+      k = lo2;
+    }
     if (P.op < 0 && lossBottom(k) > 800) {
       var lo = k * 0.02, hi = k;
       for (var it = 0; it < 30; it++) { var mid = (lo + hi) / 2; if (lossBottom(mid) > 800) hi = mid; else lo = mid; }
@@ -736,7 +750,11 @@
       XR = XS + step * ci++; if (has(P.gp)) XG = XS + step * ci++; XO = XS + step * ci++; XPcol = XS + step * ci++;
     }
     // ふつうの形も、すべての列を同じ間隔に並べる（売上総利益の開示がない形は4列）
-    if (!(P.op >= 0 && P.ni >= 0 && inAll > P.ni) && P.op >= 0) {
+    var niLoss = P.op >= 0 && P.ni < 0;
+    if (niLoss) {
+      var colsD = has(P.gp) ? 6 : 5, stepD = (XF - XS) / (colsD - 1), cd = 1;
+      XR = XS + stepD * cd++; if (has(P.gp)) XG = XS + stepD * cd++; XO = XS + stepD * cd++; XPcol = XS + stepD * cd++;
+    } else if (!(P.op >= 0 && P.ni >= 0 && inAll > P.ni) && P.op >= 0) {
       var colsN = has(P.gp) ? 5 : 4, stepN = (XF - XS) / (colsN - 1), cn = 1;
       XR = XS + stepN * cn++; if (has(P.gp)) XG = XS + stepN * cn++; XO = XS + stepN * cn++;
     }
@@ -893,8 +911,36 @@
         lines(XF + NW + 14, nT - 46, [['当期純利益', 30, 900, GT], [fmt(P.ni), 30, 700, GT], ['利益率 ' + rt(P.ni, P.rev).toFixed(1) + '%', 18, 500, M], [has(Pp.ni) ? pp(rt(P.ni, P.rev), rt(Pp.ni, Pp.rev)) : '', 18, 500, M]]
           .concat(has(P.niParent) && P.niParent !== P.ni ? [['うち親会社株主 ' + (P.niParent < 0 ? '△' : '') + fmt(Math.abs(P.niParent)), 18, 700, GT]] : []), 'start');
       } else {
-        // 営業利益は出たが、最後は純損失（雛形の形に合わせ、数字だけを示す）
-        lines(XF - 60, 200, [['当期純損失', 30, 900, NEG], [(P.ni < 0 ? '△' : '') + fmt(Math.abs(P.ni)), 30, 700, NEG], ['利益率 ' + rts(P.ni, P.rev) + '%', 18, 500, M]], 'start');
+        // 営業利益は出たが、最後は純損失：営業利益は税金や損失の箱へ流れ、足りない分を左下の純損失
+        // （と本業以外の利益）が埋める。純損失の箱は営業利益と行き先の間の列に置く（赤字の図と同じ考え方）
+        var uy = 140, us = outs.map(function (a) { return { n: a[0], v: a[1] }; });
+        us.forEach(function (a) {
+          a.y = uy; a.h = Hf(a.v); node(XF, a.y, a.h, PAL.cogs);
+          lines(XF + NW + 14, a.y + a.h / 2 - 26, [[a.n + ' (' + fmt(a.v) + ')', 20, 900]], 'start');
+          uy += a.h + 52;
+        });
+        var sx = [{ v: P.op, x: XO, y: oT, c: PAL.cogsflow }];
+        var yS = oT + oH + 70;
+        ins.concat([['当期純損失', -P.ni, 1]]).forEach(function (a) {
+          var v = a[1], h = Hf(v), main = a[2];
+          node(XPcol, yS, h, main ? NEG : PAL.op);
+          lines(XPcol + NW / 2, yS + h + 4, main
+            ? [['当期純損失', 26, 900, NEG], ['△' + fmt(v), 26, 700, NEG], ['利益率 ' + rts(P.ni, P.rev) + '%', 17, 500, M], [has(Pp.ni) && has(Pp.rev) ? '前期は ' + rts(Pp.ni, Pp.rev) + '%' : '', 17, 500, M]]
+            : [[a[0], 20, 900, GT], ['+' + fmt(v), 20, 700, GT]]);
+          sx.push({ v: v, x: XPcol + NW, y: yS, c: main ? PAL.negflow : PAL.gnflow });
+          yS += h + 8 + (main ? 112 : 56) + 18;
+        });
+        // 上から順に割り当てる（流れが交わらない）
+        var ti2 = 0, tU = 0;
+        sx.forEach(function (a) {
+          var left = a.v, sU = 0, x0 = a.x === XO ? XO + NW : a.x;
+          while (left > 1e-9 && ti2 < us.length) {
+            var t = us[ti2], take = Math.min(left, t.v - tU);
+            if (take > 0) flow(x0, a.y + sU * k, a.y + (sU + take) * k, XF, t.y + tU * k, t.y + (tU + take) * k, a.c);
+            left -= take; sU += take; tU += take;
+            if (t.v - tU <= 1e-9) { ti2++; tU = 0; }
+          }
+        });
       }
     } else {
       // 営業損失の形：販管費の箱を右端の列に寄せ、売上総利益と「足りない分（営業損失）」が流れ込む。
