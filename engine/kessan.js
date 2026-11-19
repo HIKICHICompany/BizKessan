@@ -735,6 +735,11 @@
       var cols = has(P.gp) ? 6 : 5, step = (XF - XS) / (cols - 1), ci = 1;
       XR = XS + step * ci++; if (has(P.gp)) XG = XS + step * ci++; XO = XS + step * ci++; XPcol = XS + step * ci++;
     }
+    // ふつうの形も、すべての列を同じ間隔に並べる（売上総利益の開示がない形は4列）
+    if (!(P.op >= 0 && P.ni >= 0 && inAll > P.ni) && P.op >= 0) {
+      var colsN = has(P.gp) ? 5 : 4, stepN = (XF - XS) / (colsN - 1), cn = 1;
+      XR = XS + stepN * cn++; if (has(P.gp)) XG = XS + stepN * cn++; XO = XS + stepN * cn++;
+    }
     var XN = 0, XL = 0;
     if (P.op < 0) {
       var colsL = has(P.gp) ? 6 : 5, stepL = (XF - XS) / (colsL - 1), cj = 1;
